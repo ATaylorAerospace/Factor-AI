@@ -5,6 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://typescriptlang.org)
 [![AWS](https://img.shields.io/badge/AWS-Bedrock%20%7C%20AgentCore%20%7C%20Strands-orange.svg)](https://aws.amazon.com/bedrock/)
 [![Dataset](https://img.shields.io/badge/Dataset-Taylor658%2Fsynthetic--legal-yellow.svg)](https://huggingface.co/datasets/Taylor658/synthetic-legal)
+[![Contact](https://img.shields.io/badge/Contact-Get%20In%20Touch-green.svg)](https://ataylor.getform.com/5w8wz)
 
 **Autonomous AI agents that batch-analyze legal contracts for missing provisions, unusual terms, and risk flags - powered by AWS Strands Agents SDK and Amazon Bedrock AgentCore.**
 
@@ -287,6 +288,7 @@ Contributions are welcome! Please see the [issue templates](.github/ISSUE_TEMPLA
 **A Taylor**
 
 - GitHub: [@ATaylorAerospace](https://github.com/ATaylorAerospace)
+- Contact: [Get in Touch](https://ataylor.getform.com/5w8wz)
 
 ---
 
