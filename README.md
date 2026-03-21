@@ -280,9 +280,7 @@ Contributions are welcome! Please see the [issue templates](.github/ISSUE_TEMPLA
 ## 👤 Author
 
 **A Taylor** · 2026
-
-- GitHub: [@ATaylorAerospace](https://github.com/ATaylorAerospace)
-- Contact: [![Contact](https://img.shields.io/badge/Contact-Get%20In%20Touch-green.svg)](https://ataylor.getform.com/5w8wz)
+[![Contact](https://img.shields.io/badge/Contact-Get%20In%20Touch-green.svg)](https://ataylor.getform.com/5w8wz)
 
 ---
 
