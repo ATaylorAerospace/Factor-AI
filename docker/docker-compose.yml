@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  factor-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_REGION=us-west-2
+      - AWS_PROFILE=default
+      - BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-20250514-v1:0
+      - FACTOR_ENV=development
+      - FACTOR_KNOWLEDGE_PATH=/app/data/chroma
+      - FACTOR_MAX_UPLOAD_MB=50
+      - FACTOR_MAX_BATCH_SIZE=100
+      - FACTOR_LOG_LEVEL=INFO
+    volumes:
+      - ../data:/app/data
+      - ../uploads:/app/uploads
+      - ../reports:/app/reports
+      - ~/.aws:/root/.aws:ro
+    restart: unless-stopped
+
+  factor-frontend:
+    build:
+      context: ../src/frontend
+      dockerfile: ../../docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://factor-api:8000
+    depends_on:
+      - factor-api

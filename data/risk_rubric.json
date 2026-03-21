@@ -1,0 +1,143 @@
+{
+  "rubric_version": "1.0.0",
+  "description": "Risk scoring rubric for legal provision analysis. Scores range from 0 (no risk) to 10 (critical risk).",
+  "disclaimer": "This rubric is for research purposes only. Not legal advice.",
+  "provision_rubrics": {
+    "indemnification": {
+      "weight": 8,
+      "high_risk_signals": [
+        "unlimited",
+        "sole expense",
+        "gross negligence excluded",
+        "one-sided",
+        "broad indemnification"
+      ],
+      "low_risk_signals": [
+        "mutual",
+        "capped",
+        "reasonable",
+        "standard carve-outs",
+        "insurance backed"
+      ]
+    },
+    "limitation_of_liability": {
+      "weight": 9,
+      "high_risk_signals": [
+        "unlimited liability",
+        "no cap",
+        "consequential damages included",
+        "punitive damages",
+        "one-sided limitation"
+      ],
+      "low_risk_signals": [
+        "mutual cap",
+        "aggregate limit",
+        "direct damages only",
+        "reasonable cap amount",
+        "proportional to fees"
+      ]
+    },
+    "confidentiality": {
+      "weight": 6,
+      "high_risk_signals": [
+        "perpetual",
+        "no carve-outs",
+        "one-sided",
+        "overly broad definition"
+      ],
+      "low_risk_signals": [
+        "mutual",
+        "reasonable term",
+        "standard carve-outs",
+        "public information excluded"
+      ]
+    },
+    "termination": {
+      "weight": 7,
+      "high_risk_signals": [
+        "no cure period",
+        "immediate",
+        "for convenience one-sided",
+        "no wind-down"
+      ],
+      "low_risk_signals": [
+        "mutual termination rights",
+        "cure period",
+        "wind-down provisions",
+        "reasonable notice"
+      ]
+    },
+    "governing_law": {
+      "weight": 5,
+      "high_risk_signals": [
+        "foreign jurisdiction",
+        "inconvenient forum",
+        "mandatory arbitration abroad"
+      ],
+      "low_risk_signals": [
+        "home jurisdiction",
+        "reasonable venue",
+        "neutral forum"
+      ]
+    },
+    "non_compete": {
+      "weight": 7,
+      "high_risk_signals": [
+        "worldwide",
+        "perpetual",
+        "overly broad scope",
+        "all industries"
+      ],
+      "low_risk_signals": [
+        "reasonable geographic scope",
+        "limited duration",
+        "narrowly defined",
+        "specific industry"
+      ]
+    },
+    "change_of_control": {
+      "weight": 8,
+      "high_risk_signals": [
+        "automatic termination",
+        "consent required",
+        "no assignment",
+        "veto right"
+      ],
+      "low_risk_signals": [
+        "notice only",
+        "survives change of control",
+        "reasonable conditions"
+      ]
+    },
+    "force_majeure": {
+      "weight": 5,
+      "high_risk_signals": [
+        "narrow definition",
+        "no pandemic",
+        "short notice",
+        "no termination right"
+      ],
+      "low_risk_signals": [
+        "broad definition",
+        "includes pandemic",
+        "reasonable notice",
+        "termination if extended"
+      ]
+    },
+    "representations_warranties": {
+      "weight": 7,
+      "high_risk_signals": [
+        "unlimited survival",
+        "knowledge qualifier absent",
+        "broad scope",
+        "no materiality qualifier"
+      ],
+      "low_risk_signals": [
+        "limited survival period",
+        "knowledge qualified",
+        "materiality threshold",
+        "industry standard"
+      ]
+    }
+  }
+}

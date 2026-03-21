@@ -1,0 +1,102 @@
+{
+  "provisions": {
+    "indemnification": {
+      "label": "Indemnification / Hold Harmless",
+      "description": "Obligation of one party to compensate the other for losses or damages",
+      "common_in": ["nda", "lease", "loan", "merger", "employment"],
+      "risk_weight": 8,
+      "keywords": ["indemnify", "hold harmless", "defend and indemnify"]
+    },
+    "limitation_of_liability": {
+      "label": "Limitation of Liability",
+      "description": "Caps or restricts the liability of one or both parties",
+      "common_in": ["nda", "lease", "loan", "supply", "license"],
+      "risk_weight": 9,
+      "keywords": ["limitation of liability", "aggregate liability", "consequential damages"]
+    },
+    "non_assignment": {
+      "label": "Non-Assignment",
+      "description": "Restriction on transferring rights or obligations under the agreement",
+      "common_in": ["nda", "lease", "employment", "license"],
+      "risk_weight": 5,
+      "keywords": ["non-assignment", "shall not assign", "may not assign"]
+    },
+    "confidentiality": {
+      "label": "Confidentiality / Non-Disclosure",
+      "description": "Obligation to protect confidential information",
+      "common_in": ["nda", "employment", "merger", "partnership"],
+      "risk_weight": 6,
+      "keywords": ["confidential information", "non-disclosure", "proprietary"]
+    },
+    "non_compete": {
+      "label": "Non-Compete / Restrictive Covenant",
+      "description": "Restriction on competing activities during or after the agreement",
+      "common_in": ["employment", "merger", "partnership", "nda"],
+      "risk_weight": 7,
+      "keywords": ["non-compete", "restrictive covenant", "non-solicitation"]
+    },
+    "termination": {
+      "label": "Termination / Expiration",
+      "description": "Conditions and procedures for ending the agreement",
+      "common_in": ["nda", "lease", "loan", "employment", "supply", "license"],
+      "risk_weight": 7,
+      "keywords": ["termination", "expiration", "right to terminate"]
+    },
+    "governing_law": {
+      "label": "Governing Law / Jurisdiction",
+      "description": "Which jurisdiction's laws govern the agreement",
+      "common_in": ["nda", "lease", "loan", "merger", "supply"],
+      "risk_weight": 5,
+      "keywords": ["governing law", "governed by", "jurisdiction", "venue"]
+    },
+    "force_majeure": {
+      "label": "Force Majeure",
+      "description": "Excuses performance due to extraordinary events beyond control",
+      "common_in": ["lease", "loan", "supply", "license"],
+      "risk_weight": 5,
+      "keywords": ["force majeure", "act of god", "beyond reasonable control"]
+    },
+    "change_of_control": {
+      "label": "Change of Control",
+      "description": "Rights and obligations triggered by ownership changes",
+      "common_in": ["merger", "loan", "license", "partnership"],
+      "risk_weight": 8,
+      "keywords": ["change of control", "merger or acquisition", "change in ownership"]
+    },
+    "representations_warranties": {
+      "label": "Representations & Warranties",
+      "description": "Statements of fact and promises about the state of affairs",
+      "common_in": ["merger", "loan", "lease", "supply"],
+      "risk_weight": 7,
+      "keywords": ["represents and warrants", "hereby represents", "covenants and represents"]
+    },
+    "entire_agreement": {
+      "label": "Entire Agreement / Integration",
+      "description": "Clause stating the document is the complete agreement",
+      "common_in": ["nda", "lease", "loan", "employment", "merger"],
+      "risk_weight": 3,
+      "keywords": ["entire agreement", "integration clause", "supersedes all prior"]
+    },
+    "severability": {
+      "label": "Severability",
+      "description": "If one provision is invalid, the rest of the agreement survives",
+      "common_in": ["nda", "lease", "loan", "employment"],
+      "risk_weight": 2,
+      "keywords": ["severability", "savings clause", "if any provision is invalid"]
+    },
+    "waiver": {
+      "label": "Waiver / Amendment",
+      "description": "Conditions for waiving rights or modifying the agreement",
+      "common_in": ["nda", "lease", "loan", "employment"],
+      "risk_weight": 3,
+      "keywords": ["waiver", "amendment", "modification in writing"]
+    },
+    "notice": {
+      "label": "Notice / Notification",
+      "description": "Requirements for providing formal notices between parties",
+      "common_in": ["nda", "lease", "loan", "employment", "merger"],
+      "risk_weight": 2,
+      "keywords": ["notice shall be", "written notice", "notification"]
+    }
+  }
+}
