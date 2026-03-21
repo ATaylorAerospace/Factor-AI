@@ -285,15 +285,17 @@ Contributions are welcome! Please see the [issue templates](.github/ISSUE_TEMPLA
 
 ## 👤 Author
 
-**A Taylor**
+**A Taylor** · 2026
 
 - GitHub: [@ATaylorAerospace](https://github.com/ATaylorAerospace)
 - Contact: [Get in Touch](https://ataylor.getform.com/5w8wz)
+
+[![Contact](https://img.shields.io/badge/Contact-Get%20In%20Touch-green.svg)](https://ataylor.getform.com/5w8wz)
 
 ---
 
 ## 📄 License
 
-MIT © A Taylor
+MIT © 2026 A Taylor
 
 See [LICENSE](LICENSE) for details.
