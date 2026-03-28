@@ -54,3 +54,5 @@ Thumbs.db
 
 cdk.out/
 .cdk.staging/
+
+CLAUDE.md
