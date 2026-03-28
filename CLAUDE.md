@@ -14,8 +14,7 @@ Factor is an agentic AI legal due diligence platform built with AWS Strands Agen
 ## Important Constraints
 1. **ALL dataset content is synthetic** — never present as real legal authority
 2. **Not legal advice** — Factor is a research/productivity tool
-3. **Author:** A Taylor (sole author on all files)
-4. **Agent architecture:** Use Strands SDK, not direct API calls
+3. **Agent architecture:** Use Strands SDK, not direct API calls
 
 ## Commands
 ```bash
