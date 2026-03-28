@@ -1,4 +1,4 @@
-# Factor — Claude Code Context
+# Factor 
 
 ## Project Overview
 Factor is an agentic AI legal due diligence platform built with AWS Strands Agents SDK and Amazon Bedrock AgentCore. It uses autonomous agents to batch-analyze legal documents for missing provisions, unusual terms, and risk flags.
