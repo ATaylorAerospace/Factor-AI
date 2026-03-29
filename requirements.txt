@@ -1,7 +1,6 @@
 strands-agents>=0.1.0
 strands-agents-tools>=0.1.0
 boto3>=1.35.0
-aws-cdk-lib>=2.170.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 sse-starlette>=2.0.0
