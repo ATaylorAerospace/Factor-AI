@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     factor_max_batch_size: int = 100
     factor_log_level: str = "INFO"
     factor_s3_bucket: str = "factor-documents"
+    factor_allowed_origins: str = "*"
 
     # Cognito
     factor_cognito_user_pool_id: str = ""
@@ -46,6 +47,13 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.factor_env == "production"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse allowed origins from comma-separated string."""
+        if self.factor_allowed_origins == "*" and not self.is_production:
+            return ["*"]
+        return [o.strip() for o in self.factor_allowed_origins.split(",") if o.strip()]
 
 
 settings = Settings()
