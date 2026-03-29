@@ -194,7 +194,7 @@ async def get_report(session_id: str):
 @app.get("/api/v1/reports/{session_id}/export")
 async def export_report(
     session_id: str,
-    format: str = Query("excel", regex="^(excel|html)$"),
+    format: str = Query("excel", pattern="^(excel|html)$"),
 ):
     """Export report in Excel or HTML format."""
     session = session_store.get_session(session_id)
