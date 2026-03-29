@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 
 from strands import tool
 
@@ -52,15 +50,6 @@ DEFAULT_RUBRIC: dict[str, dict] = {
         "low_risk_signals": ["broad definition", "includes pandemic", "reasonable notice"],
     },
 }
-
-
-def _load_rubric(rubric_path: str | None = None) -> dict:
-    """Load risk rubric from file or use defaults."""
-    if rubric_path:
-        path = Path(rubric_path)
-        if path.exists():
-            return json.loads(path.read_text())
-    return DEFAULT_RUBRIC
 
 
 def _calculate_score(provision_text: str, rubric_entry: dict) -> tuple[float, list[str]]:
