@@ -39,29 +39,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=not settings.is_production,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 session_store = SessionStore()
-
-
-@app.on_event("startup")
-async def configure_logging():
-    """Configure logging from FACTOR_LOG_LEVEL setting."""
-    log_level = getattr(logging, settings.factor_log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Quiet noisy third-party libraries
-    logging.getLogger("chromadb").setLevel(logging.WARNING)
-    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logger.info("Logging configured: level=%s", settings.factor_log_level)
 
 
 @app.get("/api/v1/health")
