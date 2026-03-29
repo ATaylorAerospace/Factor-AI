@@ -54,6 +54,3 @@ Thumbs.db
 
 cdk.out/
 .cdk.staging/
-
-# Claude Code project context (keep local only)
-CLAUDE.md
