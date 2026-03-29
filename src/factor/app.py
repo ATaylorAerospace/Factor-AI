@@ -48,6 +48,22 @@ app.add_middleware(
 session_store = SessionStore()
 
 
+@app.on_event("startup")
+async def configure_logging():
+    """Configure logging from FACTOR_LOG_LEVEL setting."""
+    log_level = getattr(logging, settings.factor_log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    # Quiet noisy third-party libraries
+    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logger.info("Logging configured: level=%s", settings.factor_log_level)
+
+
 @app.get("/api/v1/health")
 async def health_check():
     """Health check endpoint."""
@@ -194,7 +210,7 @@ async def get_report(session_id: str):
 @app.get("/api/v1/reports/{session_id}/export")
 async def export_report(
     session_id: str,
-    format: str = Query("excel", pattern="^(excel|html)$"),
+    format: str = Query("excel", regex="^(excel|html)$"),
 ):
     """Export report in Excel or HTML format."""
     session = session_store.get_session(session_id)
