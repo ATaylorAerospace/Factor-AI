@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
@@ -23,9 +24,12 @@ from factor.tools.comparison import compare_across_documents
 from factor.tools.export import build_risk_report, export_excel, export_html
 from factor.tools.classification import classify_domain
 from factor.tools.citations import extract_citations
+from factor.tools.parsing import parse_pdf, parse_docx
 from factor.db.database import SessionStore
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt"}
 
 app = FastAPI(
     title="Factor — Agentic AI Legal Due Diligence",
@@ -46,6 +50,21 @@ app.add_middleware(
 )
 
 session_store = SessionStore()
+
+
+@app.on_event("startup")
+async def configure_logging():
+    """Configure logging from FACTOR_LOG_LEVEL setting."""
+    log_level = getattr(logging, settings.factor_log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logger.info("Logging configured: level=%s", settings.factor_log_level)
 
 
 @app.get("/api/v1/health")
@@ -71,6 +90,17 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
             detail=f"Maximum batch size is {settings.factor_max_batch_size} files",
         )
 
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported file type '{ext}' for file '{f.filename}'. "
+                    f"Allowed types: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
+                ),
+            )
+
     session_id = str(uuid.uuid4())
     upload_dir = Path(f"uploads/{session_id}")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -91,64 +121,75 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
     session_store.create_session(session_id, [f.filename or "" for f in files])
 
     async def event_stream() -> AsyncGenerator[dict, None]:
-        yield {"event": "session", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
+        try:
+            yield {"event": "session", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
 
-        yield {"event": "status", "data": json.dumps({"stage": "ingestion", "message": "Parsing documents..."})}
+            yield {"event": "status", "data": json.dumps({"stage": "ingestion", "message": "Parsing documents..."})}
 
-        all_provisions = {}
-        for fpath in saved_paths:
-            text = Path(fpath).read_text(errors="replace")
-            doc_id = str(uuid.uuid4())
-            provisions = chunk_provisions(text=text, doc_type="unknown")
-            all_provisions[doc_id] = provisions
+            all_provisions = {}
+            for fpath in saved_paths:
+                doc_id = str(uuid.uuid4())
+                ext = Path(fpath).suffix.lower()
+                if ext == ".pdf":
+                    parsed = parse_pdf(file_path=fpath)
+                    text = parsed.get("text", "")
+                elif ext in (".docx", ".doc"):
+                    parsed = parse_docx(file_path=fpath)
+                    text = parsed.get("text", "")
+                else:
+                    text = Path(fpath).read_text(errors="replace")
+                provisions = chunk_provisions(text=text, doc_type="unknown")
+                all_provisions[doc_id] = provisions
 
-            yield {"event": "progress", "data": json.dumps({
-                "stage": "ingestion",
-                "document": Path(fpath).name,
-                "provisions_found": len(provisions),
-            })}
+                yield {"event": "progress", "data": json.dumps({
+                    "stage": "ingestion",
+                    "document": Path(fpath).name,
+                    "provisions_found": len(provisions),
+                })}
 
-        yield {"event": "status", "data": json.dumps({"stage": "analysis", "message": "Analyzing provisions..."})}
+            yield {"event": "status", "data": json.dumps({"stage": "analysis", "message": "Analyzing provisions..."})}
 
-        all_risk_scores = []
-        all_gaps = []
-        provisions_by_doc = {}
+            all_risk_scores = []
+            all_gaps = []
+            provisions_by_doc = {}
 
-        for doc_id, provisions in all_provisions.items():
-            detected_types = []
-            for prov in provisions:
-                detection = detect_provision_type(provision_text=prov["text"])
-                prov["provision_type"] = detection["provision_type"]
-                detected_types.append(detection["provision_type"])
+            for doc_id, provisions in all_provisions.items():
+                detected_types = []
+                for prov in provisions:
+                    detection = detect_provision_type(provision_text=prov["text"])
+                    prov["provision_type"] = detection["provision_type"]
+                    detected_types.append(detection["provision_type"])
 
-                risk = score_risk(provision=prov)
-                risk["document_id"] = doc_id
-                all_risk_scores.append(risk)
+                    risk = score_risk(provision=prov)
+                    risk["document_id"] = doc_id
+                    all_risk_scores.append(risk)
 
-            gaps = find_gaps(detected_provisions=detected_types, doc_type="unknown")
-            for gap in gaps:
-                gap["document_id"] = doc_id
-            all_gaps.extend(gaps)
+                gaps = find_gaps(detected_provisions=detected_types, doc_type="unknown")
+                for gap in gaps:
+                    gap["document_id"] = doc_id
+                all_gaps.extend(gaps)
 
-            provisions_by_doc[doc_id] = provisions
+                provisions_by_doc[doc_id] = provisions
 
-        comparison = compare_across_documents(provisions_by_doc=provisions_by_doc)
+            comparison = compare_across_documents(provisions_by_doc=provisions_by_doc)
 
-        yield {"event": "status", "data": json.dumps({"stage": "reporting", "message": "Generating report..."})}
+            yield {"event": "status", "data": json.dumps({"stage": "reporting", "message": "Generating report..."})}
 
-        analysis_results = {
-            "risk_scores": all_risk_scores,
-            "gaps": all_gaps,
-            "comparisons": comparison.get("comparisons", []),
-            "document_count": len(all_provisions),
-        }
+            analysis_results = {
+                "risk_scores": all_risk_scores,
+                "gaps": all_gaps,
+                "comparisons": comparison.get("comparisons", []),
+                "document_count": len(all_provisions),
+            }
 
-        report = build_risk_report(analysis_results=analysis_results)
+            report = build_risk_report(analysis_results=analysis_results)
 
-        session_store.store_result(session_id, report)
+            session_store.store_result(session_id, report)
 
-        yield {"event": "report", "data": json.dumps(report)}
-        yield {"event": "done", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
+            yield {"event": "report", "data": json.dumps(report)}
+            yield {"event": "done", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
+        finally:
+            shutil.rmtree(upload_dir, ignore_errors=True)
 
     return EventSourceResponse(event_stream())
 
@@ -194,7 +235,7 @@ async def get_report(session_id: str):
 @app.get("/api/v1/reports/{session_id}/export")
 async def export_report(
     session_id: str,
-    format: str = Query("excel", regex="^(excel|html)$"),
+    format: str = Query("excel", pattern="^(excel|html)$"),
 ):
     """Export report in Excel or HTML format."""
     session = session_store.get_session(session_id)
