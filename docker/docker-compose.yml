@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   factor-api:
     build:
@@ -16,6 +14,8 @@ services:
       - FACTOR_MAX_UPLOAD_MB=50
       - FACTOR_MAX_BATCH_SIZE=100
       - FACTOR_LOG_LEVEL=INFO
+      - FACTOR_S3_BUCKET=factor-documents
+      - FACTOR_ALLOWED_ORIGINS=*
     volumes:
       - ../data:/app/data
       - ../uploads:/app/uploads
@@ -33,3 +33,4 @@ services:
       - VITE_API_URL=http://factor-api:8000
     depends_on:
       - factor-api
+    restart: unless-stopped
