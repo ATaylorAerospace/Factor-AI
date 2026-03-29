@@ -1,0 +1,66 @@
+"""Tests for citation extraction tools."""
+
+from factor.tools.citations import extract_citations
+
+
+def test_extract_case_citation():
+    """Case citations (Party v. Party) should be extracted."""
+    text = "As established in Smith v. Jones, 123 F.Supp 456, the court ruled in favor."
+    results = extract_citations(text=text)
+    cases = [r for r in results if r["type"] == "case"]
+    assert len(cases) >= 1
+    assert cases[0]["plaintiff"].strip() == "Smith"
+    assert cases[0]["defendant"].strip().startswith("Jones")
+    assert cases[0]["is_synthetic"] is True
+    assert "warning" in cases[0]
+
+
+def test_extract_statute_citation():
+    """Statute citations (Title USC Section) should be extracted."""
+    text = "Pursuant to 42 USC 1983, the plaintiff has standing to bring this action."
+    results = extract_citations(text=text)
+    statutes = [r for r in results if r["type"] == "statute"]
+    assert len(statutes) >= 1
+    assert statutes[0]["title"] == "42"
+    assert statutes[0]["is_synthetic"] is True
+
+
+def test_extract_regulation_citation():
+    """Federal Register citations should be extracted."""
+    text = "The rule was published at 89 Fed. Reg. 12345 on March 1."
+    results = extract_citations(text=text)
+    regs = [r for r in results if r["type"] == "regulation"]
+    assert len(regs) >= 1
+    assert regs[0]["volume"] == "89"
+    assert regs[0]["page"] == "12345"
+    assert regs[0]["is_synthetic"] is True
+
+
+def test_extract_no_citations():
+    """Text without citations should return an empty list."""
+    results = extract_citations(text="This is plain text with no legal citations at all.")
+    assert results == []
+
+
+def test_extract_multiple_types():
+    """Text with mixed citation types should extract all of them."""
+    text = (
+        "In Adams v. Baker, 500 F.2d 100, the court cited 28 USC 1332. "
+        "The regulation at 75 Fed. Reg. 9999 was also referenced."
+    )
+    results = extract_citations(text=text)
+    types_found = {r["type"] for r in results}
+    assert "case" in types_found
+    assert "statute" in types_found
+    assert "regulation" in types_found
+
+
+def test_all_citations_marked_synthetic():
+    """Every extracted citation must carry is_synthetic and a warning."""
+    text = "Smith v. Jones, 123 F.Supp 456. See also 28 USC 1332."
+    results = extract_citations(text=text)
+    assert len(results) >= 2
+    for citation in results:
+        assert citation["is_synthetic"] is True
+        assert "warning" in citation
+        assert "synthetic" in citation["warning"].lower()
