@@ -87,13 +87,16 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 
 - 🔍 **Provision Detection** - 14 provision types identified via anchor patterns
 - 📊 **Risk Scoring** - Configurable rubrics with weighted signals (0–10 scale)
-- ⚠️ **Gap Analysis** - Standard checklists for NDAs, leases, loans, mergers, employment contracts
+- ⚠️ **Gap Analysis** - Standard checklists for NDAs, leases, loans, mergers, employment, license, and supply agreements
 - 🔄 **Cross-Document Comparison** - Inconsistency detection across governing law, liability caps, termination terms
 - 📚 **RAG Knowledge Search** - Synthetic legal knowledge base (Taylor658/synthetic-legal)
 - 📋 **Structured Reports** - Executive summary, risk assessment, gap analysis, comparison results
 - 📥 **Export** - Excel (with disclaimer tab) and HTML (with disclaimers on every page)
 - ⚡ **SSE Streaming** - Real-time analysis progress via Server-Sent Events
 - 🛡️ **Session Isolation** - Cedar policies enforce per-user data access
+- 🔒 **Upload Validation** - File type enforcement (PDF, DOCX, DOC, TXT) with size limits
+- 🌐 **Production CORS** - Configurable origin restrictions for production deployments
+- 🧹 **Automatic Cleanup** - Uploaded files are removed after analysis completes
 
 ---
 
@@ -108,7 +111,7 @@ factor/
 │   ├── models/              # Pydantic data models
 │   ├── aws/                 # Bedrock, AgentCore, S3, Cognito
 │   ├── reporting/           # HTML report templates
-│   ├── db/                  # Session store
+│   ├── db/                  # Session store (thread-safe)
 │   ├── app.py               # FastAPI + SSE streaming
 │   └── config.py            # pydantic-settings
 ├── src/frontend/            # React 18 + TypeScript + Vite
@@ -122,7 +125,7 @@ factor/
 ├── policies/                # Cedar policy files
 ├── data/                    # Provision definitions, risk rubric, samples
 ├── infra/                   # AWS CDK stacks
-└── docker/                  # Dockerfile + docker-compose
+└── docker/                  # API + Frontend Dockerfiles, docker-compose
 ```
 
 ---
@@ -212,7 +215,7 @@ pytest tests/ -v --cov=src/factor
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/analyze` | Upload + stream agentic analysis |
+| `POST` | `/api/v1/analyze` | Upload documents (PDF, DOCX, DOC, TXT) + stream agentic analysis |
 | `GET` | `/api/v1/sessions/{id}` | Session status + results |
 | `GET` | `/api/v1/sessions/{id}/trace` | Agent reasoning trace |
 | `GET` | `/api/v1/reports/{session_id}` | Structured report |
@@ -241,6 +244,10 @@ Tests cover:
 - ✅ Synthetic dataset loading and metadata
 - ✅ ChromaDB vector store operations
 - ✅ Provision detection, scoring, and gap analysis
+- ✅ Cross-document comparison and inconsistency detection
+- ✅ Domain classification across 13 legal domains
+- ✅ Citation extraction (cases, statutes, regulations)
+- ✅ Report building, Excel export, and HTML export
 - ✅ All outputs label synthetic content
 
 ---
@@ -250,6 +257,7 @@ Tests cover:
 ### Docker
 
 ```bash
+# Start both API and frontend services
 docker compose -f docker/docker-compose.yml up --build
 ```
 
