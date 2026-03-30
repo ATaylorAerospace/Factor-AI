@@ -1,3 +1,5 @@
+![factorai](docs/legal.png)
+
 # ⚖️ Factor AI - Agentic AI Legal Due Diligence Platform 🔍
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
