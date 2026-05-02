@@ -9,7 +9,7 @@
 [![Dataset](https://img.shields.io/badge/Dataset-Taylor658%2Fsynthetic--legal-yellow.svg)](https://huggingface.co/datasets/Taylor658/synthetic-legal)
 [![Contact](https://img.shields.io/badge/Contact-Get%20In%20Touch-green.svg)](https://ataylor.getform.com/5w8wz)
 
-**Autonomous AI agents that batch-analyze legal contracts for missing provisions, unusual terms, and risk flags - powered by AWS Strands Agents SDK and Amazon Bedrock AgentCore.**
+**Autonomous AI agents that batch analyze legal contracts for missing provisions, unusual terms, and risk flags - powered by AWS Strands Agents SDK and Amazon Bedrock AgentCore.**
 
 > 🚧 **Status:** Core agents stable · Dashboard live · AgentCore deployment ready
 
