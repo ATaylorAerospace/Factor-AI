@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { DropZone } from './components/Upload/DropZone';
 import { BatchProgress } from './components/Upload/BatchProgress';
@@ -6,7 +5,6 @@ import { Dashboard } from './components/Analysis/Dashboard';
 import { ReportViewer } from './components/Report/ReportViewer';
 import { Disclaimer } from './components/shared/Disclaimer';
 import { useAnalysis } from './hooks/useAnalysis';
-import type { AnalysisState } from './types';
 
 function HomePage() {
   const { state, startAnalysis } = useAnalysis();

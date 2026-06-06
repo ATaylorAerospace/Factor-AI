@@ -33,6 +33,10 @@ export function useUpload() {
         errors.push(`${file.name}: exceeds 50MB limit`);
         continue;
       }
+      if (file.type && !ACCEPTED_TYPES.includes(file.type)) {
+        errors.push(`${file.name}: unsupported file type`);
+        continue;
+      }
       valid.push(file);
     }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown, ChevronRight, Bot } from 'lucide-react';
 import { Disclaimer } from '../shared/Disclaimer';
 import type { TraceEntry } from '../../types';

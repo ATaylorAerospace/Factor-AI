@@ -9,7 +9,6 @@ from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
 from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
-    SpanExportResult,
     ConsoleSpanExporter,
 )
 

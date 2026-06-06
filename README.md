@@ -31,6 +31,7 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 - **Identify** missing critical clauses via gap analysis
 - **Compare** provisions across documents for inconsistencies
 - **Generate** structured risk reports with Excel and HTML export
+- **Guard** every reasoning step with a financial circuit breaker and Arize Phoenix telemetry
 
 ---
 
@@ -61,6 +62,13 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 │    │ • Excel     │                                     │
 │    │ • HTML      │                                     │
 │    └─────────────┘                                      │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  FINANCIAL-GUARDRAIL & TELEMETRY HARNESS           │  │
+│  │  Circuit Breaker │ Budget Tracker │ Loop Detector  │  │
+│  │  GuardedBedrockModel → audits token I/O per step   │  │
+│  │  OpenTelemetry/OTLP → Arize Phoenix (traces UI)    │  │
+│  └───────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │  Bedrock AgentCore Runtime │ Memory │ Gateway      │  │
@@ -95,6 +103,9 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 - 📋 **Structured Reports** - Executive summary, risk assessment, gap analysis, comparison results
 - 📥 **Export** - Excel (with disclaimer tab) and HTML (with disclaimers on every page)
 - ⚡ **SSE Streaming** - Real-time analysis progress via Server-Sent Events
+- 💰 **Financial Circuit Breaker** - Per-session token budget enforced at every reasoning step; agents are hard-halted before runaway cost
+- 🔁 **Reasoning Loop Detection** - Sliding-window detector halts agents stuck in repetitive, high-cost cycles
+- 📡 **Phoenix Telemetry** - OpenTelemetry traces exported to a self-hosted Arize Phoenix instance for per-step token auditing
 - 🛡️ **Session Isolation** - Cedar policies enforce per-user data access
 - 🔒 **Upload Validation** - File type enforcement (PDF, DOCX, DOC, TXT) with size limits
 - 🌐 **Production CORS** - Configurable origin restrictions for production deployments
@@ -108,6 +119,7 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 factor/
 ├── src/factor/              # Python backend
 │   ├── agents/              # Strands Agent definitions
+│   ├── harness/             # Financial-guardrail & Phoenix telemetry harness
 │   ├── tools/               # @tool decorated functions
 │   ├── knowledge/           # ChromaDB vector store + dataset loader
 │   ├── models/              # Pydantic data models
@@ -127,8 +139,60 @@ factor/
 ├── policies/                # Cedar policy files
 ├── data/                    # Provision definitions, risk rubric, samples
 ├── infra/                   # AWS CDK stacks
+├── docker-compose.yml       # Self-hosted Arize Phoenix (telemetry)
 └── docker/                  # API + Frontend Dockerfiles, docker-compose
 ```
+
+---
+
+## 💰 Financial-Guardrail & Telemetry Harness
+
+When agents autonomously batch-analyze 100+ legal documents, the loop of reading, extracting, and comparing can lead to runaway token consumption. The harness wraps Bedrock AgentCore execution to **audit token input/output at every discrete reasoning step** and acts as a **financial circuit breaker** — ensuring the operating cost of the AI never outpaces the value of the analysis.
+
+### How it works
+
+```
+Agent step → GuardedBedrockModel → CircuitBreaker.check()
+                                       ├── SessionBudget   (token cost accounting)
+                                       └── LoopDetector    (repetitive-cycle detection)
+                                       ↓ trip → BudgetExceededError / ReasoningLoopError
+OpenTelemetry span (gen_ai.usage.*) → GuardrailSpanProcessor → Arize Phoenix (OTLP)
+```
+
+| Component | Responsibility |
+|-----------|----------------|
+| `SessionBudget` | Accumulates input/output token cost per session (Sonnet pricing: $3 / $15 per 1M) |
+| `LoopDetector` | Sliding-window detection of repeated reasoning actions |
+| `CircuitBreaker` | Combines budget + step-limit + loop checks; raises to **hard-halt** the agent |
+| `GuardedBedrockModel` | Proxy around `BedrockModel` that checks the breaker before every invocation |
+| `FinancialGuardrail` | Singleton registry of per-session circuit breakers |
+| `GuardrailSpanProcessor` | Extracts token counts from OTel spans and feeds the breaker; exports to Phoenix |
+
+When a breaker trips, the `/api/v1/analyze` SSE stream emits a `guardrail_halt` event with the session's cost, step count, and trip reason.
+
+### Start Phoenix (self-hosted)
+
+```bash
+# Launch the Phoenix telemetry UI + OTLP collector
+docker compose up -d phoenix
+
+# Phoenix UI:        http://localhost:6006
+# OTLP gRPC:         localhost:4317
+```
+
+### Configuration
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `PHOENIX_ENABLED` | `true` | Enable OTLP export to Phoenix |
+| `PHOENIX_OTLP_ENDPOINT` | `http://localhost:6006/v1/traces` | Phoenix trace collector endpoint |
+| `GUARDRAIL_ENABLED` | `true` | Enable the financial circuit breaker |
+| `GUARDRAIL_SESSION_BUDGET_USD` | `5.0` | Hard cost ceiling per analysis session |
+| `GUARDRAIL_MAX_STEPS` | `200` | Maximum reasoning steps per session |
+| `GUARDRAIL_LOOP_WINDOW` | `10` | Sliding window size for loop detection |
+| `GUARDRAIL_LOOP_THRESHOLD` | `5` | Repeat count within window that trips a loop |
+| `GUARDRAIL_INPUT_COST_PER_1M` | `3.0` | Input token price (USD per 1M) |
+| `GUARDRAIL_OUTPUT_COST_PER_1M` | `15.0` | Output token price (USD per 1M) |
 
 ---
 
@@ -188,6 +252,8 @@ pytest tests/ -v --cov=src/factor
 | 🔧 **Agent Gateway** | Bedrock AgentCore Gateway | MCP tool access |
 | 🛡️ **Agent Policy** | Bedrock AgentCore Policy (Cedar) | Action boundaries |
 | 📊 **Observability** | Bedrock AgentCore + OTEL | Tracing + dashboards |
+| 📡 **AI Telemetry** | Arize Phoenix (OTLP, self-hosted) | Per-step token auditing + trace UI |
+| 💰 **Cost Guardrail** | Custom circuit breaker harness | Budget + loop-detection hard halt |
 | 🔐 **Identity** | Bedrock AgentCore Identity / Cognito | Authentication |
 | 🔢 **Embeddings** | sentence-transformers | Vector embeddings |
 | 📚 **Vector Store** | ChromaDB (local) / Bedrock KB (prod) | Dataset indexing |
@@ -222,6 +288,8 @@ pytest tests/ -v --cov=src/factor
 | `GET` | `/api/v1/sessions/{id}/trace` | Agent reasoning trace |
 | `GET` | `/api/v1/reports/{session_id}` | Structured report |
 | `GET` | `/api/v1/reports/{session_id}/export` | Download Excel/HTML |
+| `GET` | `/api/v1/sessions/{id}/budget` | Real-time guardrail budget + token status |
+| `GET` | `/api/v1/guardrail/status` | Guardrail config + all active sessions |
 | `GET` | `/api/v1/knowledge/search` | Search synthetic KB |
 | `GET` | `/api/v1/knowledge/domains` | List legal domains |
 | `GET` | `/api/v1/health` | Health check |
@@ -250,6 +318,7 @@ Tests cover:
 - ✅ Domain classification across 13 legal domains
 - ✅ Citation extraction (cases, statutes, regulations)
 - ✅ Report building, Excel export, and HTML export
+- ✅ Financial guardrail: budget accounting, loop detection, circuit breaker trips
 - ✅ All outputs label synthetic content
 
 ---

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { uploadAndAnalyze } from '../api/client';
-import type { AnalysisState, Report, TraceEntry } from '../types';
+import type { AnalysisState, Report } from '../types';
 
 const initialState: AnalysisState = {
   status: 'idle',

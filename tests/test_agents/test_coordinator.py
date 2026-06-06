@@ -1,6 +1,5 @@
 """Tests for the Coordinator Agent."""
 
-from unittest.mock import patch, MagicMock
 
 from factor.agents.coordinator import _infer_doc_type, ingest_documents
 

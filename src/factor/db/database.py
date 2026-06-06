@@ -8,7 +8,6 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from factor.config import settings
 
 logger = logging.getLogger(__name__)
 

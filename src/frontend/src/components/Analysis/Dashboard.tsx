@@ -1,4 +1,3 @@
-import React from 'react';
 import { ProvisionCard } from './ProvisionCard';
 import { RiskHeatmap } from './RiskHeatmap';
 import { GapTable } from './GapTable';
@@ -14,8 +13,6 @@ interface DashboardProps {
 export function Dashboard({ report, trace }: DashboardProps) {
   const riskScores = report.sections.find((s) => s.title === 'Risk Assessment')?.items || [];
   const gaps = report.sections.find((s) => s.title === 'Gap Analysis')?.items || [];
-  const comparisons =
-    report.sections.find((s) => s.title === 'Cross-Document Comparison')?.items || [];
 
   const riskColor: Record<string, string> = {
     critical: '#dc3545',
