@@ -16,6 +16,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from factor import DISCLAIMER, __version__
 from factor.config import settings
+from factor.harness.guardrail import get_guardrail
+from factor.harness.exceptions import CircuitBreakerTripped
 from factor.tools.chunking import chunk_provisions
 from factor.tools.detection import detect_provision_type
 from factor.tools.scoring import score_risk
@@ -65,6 +67,11 @@ async def configure_logging():
     logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logger.info("Logging configured: level=%s", settings.factor_log_level)
+
+    if settings.phoenix_enabled:
+        from factor.aws.observability import init_tracing
+        init_tracing("factor")
+        logger.info("Phoenix telemetry initialized")
 
 
 @app.get("/api/v1/health")
@@ -120,9 +127,19 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
 
     session_store.create_session(session_id, [f.filename or "" for f in files])
 
+    guardrail = get_guardrail()
+    breaker = guardrail.register_session(session_id) if settings.guardrail_enabled else None
+
     async def event_stream() -> AsyncGenerator[dict, None]:
         try:
             yield {"event": "session", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
+
+            if breaker:
+                yield {"event": "guardrail", "data": json.dumps({
+                    "stage": "initialized",
+                    "budget_usd": settings.guardrail_session_budget_usd,
+                    "max_steps": settings.guardrail_max_steps,
+                })}
 
             yield {"event": "status", "data": json.dumps({"stage": "ingestion", "message": "Parsing documents..."})}
 
@@ -164,6 +181,9 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
                     risk["document_id"] = doc_id
                     all_risk_scores.append(risk)
 
+                    if breaker:
+                        breaker.record_step(action="score_risk", meta={"doc_id": doc_id})
+
                 gaps = find_gaps(detected_provisions=detected_types, doc_type="unknown")
                 for gap in gaps:
                     gap["document_id"] = doc_id
@@ -186,9 +206,28 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
 
             session_store.store_result(session_id, report)
 
+            if breaker:
+                yield {"event": "guardrail", "data": json.dumps({
+                    "stage": "completed",
+                    **breaker.status(),
+                })}
+
             yield {"event": "report", "data": json.dumps(report)}
             yield {"event": "done", "data": json.dumps({"session_id": session_id, "disclaimer": DISCLAIMER})}
+
+        except CircuitBreakerTripped as exc:
+            logger.warning("Circuit breaker halted session %s: %s", session_id, exc)
+            session_store.update_status(session_id, "halted")
+            yield {"event": "guardrail_halt", "data": json.dumps({
+                "halted": True,
+                **exc.status,
+                "message": str(exc),
+                "disclaimer": DISCLAIMER,
+            })}
+
         finally:
+            if settings.guardrail_enabled:
+                guardrail.remove_session(session_id)
             shutil.rmtree(upload_dir, ignore_errors=True)
 
     return EventSourceResponse(event_stream())
@@ -257,6 +296,31 @@ async def export_report(
         export_html(report=report, output_path=path)
 
     return {"path": path, "format": format, "disclaimer": DISCLAIMER}
+
+
+@app.get("/api/v1/sessions/{session_id}/budget")
+async def get_session_budget(session_id: str):
+    """Get real-time budget and guardrail status for a session."""
+    guardrail = get_guardrail()
+    status = guardrail.session_status(session_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="No active guardrail for this session")
+    status["disclaimer"] = DISCLAIMER
+    return status
+
+
+@app.get("/api/v1/guardrail/status")
+async def guardrail_overview():
+    """Get guardrail status across all active sessions."""
+    guardrail = get_guardrail()
+    return {
+        "enabled": settings.guardrail_enabled,
+        "phoenix_enabled": settings.phoenix_enabled,
+        "phoenix_endpoint": settings.phoenix_otlp_endpoint,
+        "default_budget_usd": settings.guardrail_session_budget_usd,
+        "active_sessions": guardrail.all_sessions(),
+        "disclaimer": DISCLAIMER,
+    }
 
 
 @app.get("/api/v1/knowledge/search")

@@ -11,6 +11,8 @@ from strands.models.bedrock import BedrockModel
 
 from factor.agents.prompts import COORDINATOR_PROMPT
 from factor.config import settings
+from factor.harness.circuit_breaker import CircuitBreaker
+from factor.harness.model_wrapper import GuardedBedrockModel
 from factor.tools.parsing import parse_pdf, parse_docx
 from factor.tools.chunking import chunk_provisions
 from factor.tools.detection import detect_provision_type
@@ -185,16 +187,22 @@ def generate_report(analysis_results: dict, output_dir: str = "./reports") -> di
     return report
 
 
-def create_coordinator_agent() -> Agent:
+def create_coordinator_agent(breaker: CircuitBreaker | None = None) -> Agent:
     """Create and return the Coordinator Agent.
 
     The Coordinator orchestrates the full due diligence pipeline:
-    ingest → analyze → search knowledge → report.
+    ingest -> analyze -> search knowledge -> report.
+
+    Args:
+        breaker: Optional circuit breaker for financial guardrails.
     """
     model = BedrockModel(
         model_id=settings.bedrock_model_id,
         region_name=settings.aws_region,
     )
+
+    if breaker is not None:
+        model = GuardedBedrockModel(model, breaker)
 
     agent = Agent(
         model=model,
@@ -207,5 +215,6 @@ def create_coordinator_agent() -> Agent:
         ],
     )
 
-    logger.info("Created Coordinator Agent with model=%s", settings.bedrock_model_id)
+    logger.info("Created Coordinator Agent with model=%s guarded=%s",
+                settings.bedrock_model_id, breaker is not None)
     return agent

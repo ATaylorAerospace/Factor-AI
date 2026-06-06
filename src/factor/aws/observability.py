@@ -1,4 +1,4 @@
-"""AgentCore Observability — OpenTelemetry tracing and CloudWatch integration."""
+"""AgentCore Observability — OpenTelemetry tracing with Phoenix export."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
 
+from factor.config import settings
+
 logger = logging.getLogger(__name__)
 
 _initialized = False
@@ -15,6 +17,10 @@ _initialized = False
 
 def init_tracing(service_name: str = "factor") -> trace.Tracer:
     """Initialize OpenTelemetry tracing.
+
+    When Phoenix is enabled, delegates to the harness telemetry module
+    which sets up the OTLP exporter and guardrail span processor.
+    Falls back to console exporter otherwise.
 
     Args:
         service_name: Name of the service for trace attribution.
@@ -25,6 +31,18 @@ def init_tracing(service_name: str = "factor") -> trace.Tracer:
     global _initialized
 
     if not _initialized:
+        if settings.phoenix_enabled:
+            try:
+                from factor.harness.telemetry import init_phoenix_tracing
+                tracer, processor = init_phoenix_tracing(service_name)
+                if processor is not None:
+                    from factor.harness.guardrail import get_guardrail
+                    processor.set_guardrail(get_guardrail())
+                _initialized = True
+                return tracer
+            except Exception:
+                logger.warning("Failed to init Phoenix tracing, falling back to console", exc_info=True)
+
         provider = TracerProvider()
         processor = SimpleSpanProcessor(ConsoleSpanExporter())
         provider.add_span_processor(processor)
