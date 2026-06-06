@@ -1,6 +1,5 @@
 """Tests for ChromaDB vector store."""
 
-import pytest
 
 from factor.knowledge.vectorstore import (
     get_vectorstore,
@@ -8,7 +7,6 @@ from factor.knowledge.vectorstore import (
     query,
     reset_collection,
     COLLECTION_NAME,
-    _collection,
 )
 
 

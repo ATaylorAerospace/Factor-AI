@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface DomainBadgeProps {
   domain: string;
   isDueDiligence?: boolean;

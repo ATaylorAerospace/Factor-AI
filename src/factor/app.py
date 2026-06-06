@@ -11,7 +11,6 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from factor import DISCLAIMER, __version__
@@ -24,8 +23,6 @@ from factor.tools.scoring import score_risk
 from factor.tools.gaps import find_gaps
 from factor.tools.comparison import compare_across_documents
 from factor.tools.export import build_risk_report, export_excel, export_html
-from factor.tools.classification import classify_domain
-from factor.tools.citations import extract_citations
 from factor.tools.parsing import parse_pdf, parse_docx
 from factor.db.database import SessionStore
 

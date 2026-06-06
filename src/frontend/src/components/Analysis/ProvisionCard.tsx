@@ -76,7 +76,7 @@ export function ProvisionCard({ provision }: ProvisionCardProps) {
         </div>
       )}
 
-      {provision.is_synthetic && (
+      {Boolean(provision.is_synthetic) && (
         <span
           style={{
             display: 'inline-block',

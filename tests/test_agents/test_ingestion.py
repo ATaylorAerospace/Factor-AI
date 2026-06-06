@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from factor.agents.prompts import INGESTION_PROMPT, SYNTHETIC_DISCLAIMER_BLOCK
+from factor.agents.prompts import INGESTION_PROMPT
 
 
 def test_ingestion_prompt_includes_disclaimer():

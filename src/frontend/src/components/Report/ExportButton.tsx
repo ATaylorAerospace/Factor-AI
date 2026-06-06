@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { exportReport } from '../../api/client';
 

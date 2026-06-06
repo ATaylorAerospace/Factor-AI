@@ -20,7 +20,6 @@ from factor.tools.scoring import score_risk
 from factor.tools.gaps import find_gaps
 from factor.tools.comparison import compare_across_documents
 from factor.tools.rag import search_synthetic_knowledge
-from factor.tools.classification import classify_domain
 from factor.tools.export import build_risk_report, export_excel, export_html
 
 logger = logging.getLogger(__name__)

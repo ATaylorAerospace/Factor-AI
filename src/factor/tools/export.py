@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,7 +185,7 @@ def export_html(report: dict, output_path: str) -> str:
     Returns:
         Path to the generated HTML file.
     """
-    from jinja2 import Environment, FileSystemLoader, BaseLoader
+    from jinja2 import Environment, BaseLoader
 
     template_str = """<!DOCTYPE html>
 <html lang="en">
