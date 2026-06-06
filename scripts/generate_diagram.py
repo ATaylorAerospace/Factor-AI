@@ -1,245 +1,256 @@
-"""Generate the Factor-AI architecture diagram with guardrail harness."""
+"""Generate the Factor-AI architecture diagram.
+
+Recreates the original look-and-feel (white background, solid-fill rounded
+boxes with drop shadows, "~ " title prefixes, color emojis and italic
+sublabels) and adds the Financial-Guardrail & Telemetry Harness tier.
+
+Emojis are composited with Pillow because matplotlib cannot render the
+color-bitmap NotoColorEmoji font directly.
+"""
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.patches import FancyBboxPatch
+from PIL import Image, ImageDraw, ImageFont
+import io
+
+# ── palette (sampled from the original docs/legal.png) ───────────────
+WHITE      = "#FFFFFF"
+BLACK      = "#1A1A1A"
+ORANGE     = "#E07407"   # supervisor / bedrock
+GREEN      = "#309341"   # risk analysis
+AMBER      = "#EDC263"   # cross-reference
+PURPLE     = "#40299B"   # knowledge base
+# harness family (distinct but in the same saturated register)
+CRIMSON    = "#C0392B"   # circuit breaker
+TEAL       = "#0E8174"   # budget / loop / guarded model
+INDIGO     = "#3B3F9E"   # phoenix
+SHADOW     = "#BDBDBD"
+DASH_GREY  = "#9E9E9E"
+GREY_TEXT  = "#555555"
+
+EMOJI_FONT = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+DPI = 130
+
+# collected as (data_x_right_anchor, data_y_center, char, target_px)
+_emoji_queue = []
 
 
-# ── colours (matched from original) ──────────────────────────────────
-WHITE       = "#FFFFFF"
-BLACK       = "#000000"
-TEAL        = "#1A7A6D"
-TEAL_FILL   = "#E6F5F2"
-ORANGE      = "#D4760A"
-ORANGE_FILL = "#FFF3E0"
-ORANGE_DARK = "#C05600"
-RED_ORANGE  = "#B8400A"
-RED_FILL    = "#FFF0EB"
-GREEN       = "#1A7A6D"
-GREEN_FILL  = "#E6F5F2"
-PURPLE      = "#6B21A8"
-PURPLE_FILL = "#F3E8FF"
-GREY_TEXT   = "#444444"
-LIGHT_GREY  = "#F5F5F5"
+def add_shadow(ax, x, y, w, h, radius):
+    sh = FancyBboxPatch(
+        (x + 0.05, y - 0.06), w, h,
+        boxstyle=f"round,pad=0,rounding_size={radius}",
+        facecolor=SHADOW, edgecolor="none", zorder=1, alpha=0.55,
+    )
+    ax.add_patch(sh)
 
 
-def draw_box(ax, x, y, w, h, label, sublabel=None,
-             border_color=ORANGE, fill_color=ORANGE_FILL,
-             text_color=BLACK, fontsize=10, bold=True,
-             sublabel_size=7.5, radius=0.02, emoji=None):
-    """Draw a rounded rectangle with centred text."""
+def draw_box(ax, x, y, w, h, title, sublabel=None, *,
+             fill=ORANGE, edge=BLACK, text_color=WHITE,
+             title_size=11, sub_size=7.6, radius=0.04,
+             emoji=None, shadow=True, prefix="~ ", lw=1.6):
+    if shadow:
+        add_shadow(ax, x, y, w, h, radius)
     box = FancyBboxPatch(
         (x, y), w, h,
         boxstyle=f"round,pad=0,rounding_size={radius}",
-        facecolor=fill_color, edgecolor=border_color,
-        linewidth=1.8, zorder=2,
+        facecolor=fill, edgecolor=edge, linewidth=lw, zorder=2,
     )
     ax.add_patch(box)
-    weight = "bold" if bold else "normal"
-    txt = f"{emoji} {label}" if emoji else label
+
+    title_txt = f"{prefix}{title}"
     if sublabel:
-        ax.text(x + w / 2, y + h * 0.62, txt,
-                ha="center", va="center", fontsize=fontsize,
-                fontweight=weight, color=text_color, zorder=3)
+        t = ax.text(x + w / 2, y + h * 0.66, title_txt,
+                    ha="center", va="center", fontsize=title_size,
+                    fontweight="bold", color=text_color, zorder=4)
         ax.text(x + w / 2, y + h * 0.28, sublabel,
-                ha="center", va="center", fontsize=sublabel_size,
-                fontstyle="italic", color=GREY_TEXT, zorder=3,
-                wrap=True)
+                ha="center", va="center", fontsize=sub_size,
+                fontstyle="italic", color=text_color, zorder=4)
     else:
-        ax.text(x + w / 2, y + h / 2, txt,
-                ha="center", va="center", fontsize=fontsize,
-                fontweight=weight, color=text_color, zorder=3)
+        t = ax.text(x + w / 2, y + h / 2, title_txt,
+                    ha="center", va="center", fontsize=title_size,
+                    fontweight="bold", color=text_color, zorder=4)
+
+    if emoji:
+        # anchor emoji just right of the box title block, vertically centred
+        cy = y + h * 0.66 if sublabel else y + h / 2
+        _emoji_queue.append((t, cy, emoji, title_size))
 
 
-def draw_arrow(ax, x1, y1, x2, y2, color=ORANGE):
+def arrow(ax, x1, y1, x2, y2, color=BLACK, lw=1.5):
     ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
-                arrowprops=dict(arrowstyle="-|>", color=color,
-                                lw=1.5, shrinkA=0, shrinkB=0),
-                zorder=1)
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=lw,
+                                shrinkA=0, shrinkB=0), zorder=1)
 
 
-def draw_section_header(ax, x, y, w, label, color=ORANGE):
-    ax.text(x + w / 2, y, label,
-            ha="center", va="center", fontsize=9.5,
-            fontweight="bold", color=color,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor=WHITE,
-                      edgecolor=color, linewidth=1.2),
-            zorder=3)
+def elbow(ax, x1, y1, x2, y2, color=BLACK, lw=1.5):
+    """Vertical-then-horizontal-then-vertical connector."""
+    ymid = (y1 + y2) / 2
+    ax.plot([x1, x1], [y1, ymid], color=color, lw=lw, zorder=1, solid_capstyle="round")
+    ax.plot([x1, x2], [ymid, ymid], color=color, lw=lw, zorder=1, solid_capstyle="round")
+    arrow(ax, x2, ymid, x2, y2, color, lw)
 
 
-# ── figure ────────────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(10.5, 12.5))
+def dashed_container(ax, x, y, w, h, label=None, label_color=BLACK):
+    box = FancyBboxPatch(
+        (x, y), w, h, boxstyle="round,pad=0,rounding_size=0.06",
+        facecolor="none", edgecolor=DASH_GREY, linewidth=1.3,
+        linestyle=(0, (6, 4)), zorder=0,
+    )
+    ax.add_patch(box)
+
+
+def header(ax, cx, y, label, color=BLACK):
+    ax.text(cx, y, label, ha="center", va="center", fontsize=10.5,
+            fontweight="bold", color=color, zorder=5,
+            bbox=dict(boxstyle="round,pad=0.35", facecolor=WHITE,
+                      edgecolor=color, linewidth=1.4))
+
+
+# ── build figure ──────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(10.6, 13.6))
 fig.patch.set_facecolor(WHITE)
 ax.set_facecolor(WHITE)
-ax.set_xlim(0, 10.5)
-ax.set_ylim(0, 12.5)
+ax.set_xlim(0, 10.6)
+ax.set_ylim(0, 13.6)
 ax.axis("off")
 
-# ── title ─────────────────────────────────────────────────────────────
-ax.text(5.25, 12.1, "FACTOR-AI",
-        ha="center", va="center", fontsize=22, fontweight="bold",
-        color=BLACK, zorder=3)
-ax.text(5.25, 11.7, "Agentic AI Legal Due Diligence Platform",
-        ha="center", va="center", fontsize=12, color=GREY_TEXT, zorder=3)
+# title
+ax.text(5.3, 13.2, "FACTOR-AI", ha="center", va="center",
+        fontsize=24, fontweight="bold", color=BLACK)
+ax.text(5.3, 12.78, "Agentic AI Legal Due Diligence Platform",
+        ha="center", va="center", fontsize=12.5, color=GREY_TEXT)
 
-# ── user / client ────────────────────────────────────────────────────
-draw_box(ax, 3.75, 10.9, 3.0, 0.55, "User / Client",
-         border_color=TEAL, fill_color=TEAL_FILL,
-         text_color=TEAL, fontsize=11)
+# user / client
+draw_box(ax, 4.0, 12.0, 2.6, 0.55, "User / Client",
+         fill=WHITE, text_color=BLACK, title_size=11.5,
+         prefix="", emoji="👤", radius=0.05)
+arrow(ax, 5.3, 12.0, 5.3, 11.55)
 
-# arrow down
-draw_arrow(ax, 5.25, 10.9, 5.25, 10.55, TEAL)
+# ── orchestration container ──────────────────────────────────────────
+dashed_container(ax, 0.35, 6.95, 9.9, 4.55)
+header(ax, 5.3, 11.35, "MULTI-AGENT CONTRACT ORCHESTRATION", ORANGE)
 
-# ── multi-agent orchestration header ─────────────────────────────────
-draw_section_header(ax, 1.0, 10.35, 8.5,
-                    "MULTI-AGENT CONTRACT ORCHESTRATION", ORANGE)
-
-# ── supervisor agent ─────────────────────────────────────────────────
-draw_box(ax, 2.0, 9.25, 6.5, 0.8,
+# supervisor
+draw_box(ax, 1.9, 9.95, 6.8, 1.0,
          "Supervisor Agent (Strands SDK)",
-         sublabel="Classifies document type, extracts\nentities, and routes tasks.",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         fontsize=11)
+         "Classifies document type, extracts\nentities, and routes tasks.",
+         fill=ORANGE, text_color=WHITE, title_size=12, emoji="🔐")
+arrow(ax, 5.3, 11.12, 5.3, 10.95, ORANGE)
 
-# arrow from header to supervisor
-draw_arrow(ax, 5.25, 10.12, 5.25, 10.05, ORANGE)
+# three sub-agents
+ay, ah, aw = 7.2, 1.25, 2.7
+rx, cx_, kx = 0.7, 3.9, 7.1
+draw_box(ax, rx, ay, aw, ah, "Risk Analysis\nAgent",
+         "Identifies liabilities and\nnon-standard clauses.",
+         fill=GREEN, text_color=WHITE, title_size=11, emoji="🛡️")
+draw_box(ax, cx_, ay, aw, ah, "Cross-Reference\nAgent",
+         "Detects inconsistencies and\nmissing provisions.",
+         fill=AMBER, text_color=BLACK, title_size=11, emoji="🔍")
+draw_box(ax, kx, ay, aw, ah, "Legal Knowledge\nBase (Semantic)",
+         "Vector store of standard\nclauses and definitions.",
+         fill=PURPLE, text_color=WHITE, title_size=11, emoji="📚")
 
-# ── three sub-agents ─────────────────────────────────────────────────
-agent_y = 7.7
-agent_h = 1.1
-agent_w = 2.6
-gap = 0.35
+for tx in (rx + aw / 2, cx_ + aw / 2, kx + aw / 2):
+    elbow(ax, 5.3, 9.95, tx, ay + ah, ORANGE)
 
-# risk analysis
-rx = 0.65
-draw_box(ax, rx, agent_y, agent_w, agent_h,
-         "Risk Analysis\nAgent",
-         sublabel="Identifies liabilities and\nnon-standard clauses.",
-         border_color=RED_ORANGE, fill_color=RED_FILL,
-         text_color=RED_ORANGE, fontsize=10)
+# ── harness container ────────────────────────────────────────────────
+dashed_container(ax, 0.35, 2.9, 9.9, 3.75)
+header(ax, 5.3, 6.5, "FINANCIAL-GUARDRAIL & TELEMETRY HARNESS", INDIGO)
 
-# cross-reference
-cx = rx + agent_w + gap
-draw_box(ax, cx, agent_y, agent_w, agent_h,
-         "Cross-Reference\nAgent",
-         sublabel="Detects inconsistencies and\nmissing provisions.",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         text_color=ORANGE_DARK, fontsize=10)
+hy, hh, hw, hgap = 4.85, 1.25, 2.15, 0.27
+hx = [0.6, 0.6 + (hw + hgap), 0.6 + 2 * (hw + hgap), 0.6 + 3 * (hw + hgap)]
+draw_box(ax, hx[0], hy, hw, hh, "Circuit\nBreaker",
+         "Hard-halts agents on\nbudget or loop breach.",
+         fill=CRIMSON, text_color=WHITE, title_size=10.5, emoji="🛑")
+draw_box(ax, hx[1], hy, hw, hh, "Budget\nTracker",
+         "Per-session token cost\n($3 / $15 per 1M).",
+         fill=TEAL, text_color=WHITE, title_size=10.5, emoji="💰")
+draw_box(ax, hx[2], hy, hw, hh, "Loop\nDetector",
+         "Sliding-window catch of\nrepetitive reasoning.",
+         fill=TEAL, text_color=WHITE, title_size=10.5, emoji="🔁")
+draw_box(ax, hx[3], hy, hw, hh, "Arize Phoenix\n(OpenTelemetry)",
+         "Trace UI + per-step\ntoken audit via OTLP.",
+         fill=INDIGO, text_color=WHITE, title_size=10.5, emoji="📡")
 
-# knowledge base
-kx = cx + agent_w + gap
-draw_box(ax, kx, agent_y, agent_w, agent_h,
-         "Legal Knowledge\nBase (Semantic)",
-         sublabel="Vector store of standard\nclauses and definitions.",
-         border_color=GREEN, fill_color=GREEN_FILL,
-         text_color=GREEN, fontsize=10)
+for x0 in hx:
+    arrow(ax, x0 + hw / 2, 6.28, x0 + hw / 2, hy + hh, INDIGO)
 
-# arrows from supervisor to sub-agents
-for ax_x in [rx + agent_w / 2, cx + agent_w / 2, kx + agent_w / 2]:
-    draw_arrow(ax, 5.25, 9.25, ax_x, agent_y + agent_h, ORANGE)
-
-# ── guardrail harness section header ─────────────────────────────────
-harness_header_y = 7.15
-draw_section_header(ax, 1.0, harness_header_y, 8.5,
-                    "FINANCIAL-GUARDRAIL & TELEMETRY HARNESS", PURPLE)
-
-# ── harness boxes ────────────────────────────────────────────────────
-hbox_y = 5.65
-hbox_h = 1.1
-hbox_w = 2.1
-hgap = 0.3
-
-# circuit breaker
-hx1 = 0.5
-draw_box(ax, hx1, hbox_y, hbox_w, hbox_h,
-         "Circuit\nBreaker",
-         sublabel="Hard-halts agents on\nbudget or loop violations.",
-         border_color=PURPLE, fill_color=PURPLE_FILL,
-         text_color=PURPLE, fontsize=10)
-
-# budget tracker
-hx2 = hx1 + hbox_w + hgap
-draw_box(ax, hx2, hbox_y, hbox_w, hbox_h,
-         "Budget\nTracker",
-         sublabel="Per-session token cost\naccounting ($3/$15 per 1M).",
-         border_color=PURPLE, fill_color=PURPLE_FILL,
-         text_color=PURPLE, fontsize=10)
-
-# loop detector
-hx3 = hx2 + hbox_w + hgap
-draw_box(ax, hx3, hbox_y, hbox_w, hbox_h,
-         "Loop\nDetector",
-         sublabel="Sliding-window detection\nof repetitive reasoning.",
-         border_color=PURPLE, fill_color=PURPLE_FILL,
-         text_color=PURPLE, fontsize=10)
-
-# phoenix
-hx4 = hx3 + hbox_w + hgap
-draw_box(ax, hx4, hbox_y, hbox_w, hbox_h,
-         "Arize Phoenix\n(OpenTelemetry)",
-         sublabel="Trace UI + per-step\ntoken auditing via OTLP.",
-         border_color=PURPLE, fill_color=PURPLE_FILL,
-         text_color=PURPLE, fontsize=10)
-
-# arrows from agents row to harness
-for ax_x in [hx1 + hbox_w / 2, hx2 + hbox_w / 2,
-             hx3 + hbox_w / 2, hx4 + hbox_w / 2]:
-    draw_arrow(ax, ax_x, harness_header_y - 0.22, ax_x, hbox_y + hbox_h, PURPLE)
-
-# ── guarded model connector ──────────────────────────────────────────
-gm_y = 4.85
-draw_box(ax, 2.5, gm_y, 5.5, 0.55,
-         "GuardedBedrockModel — checks breaker before every invocation",
-         border_color=PURPLE, fill_color=PURPLE_FILL,
-         text_color=PURPLE, fontsize=9, bold=True)
-
-# arrows from harness to guarded model
-mid_harness = (hx1 + hbox_w / 2 + hx4 + hbox_w / 2) / 2
-draw_arrow(ax, 5.25, hbox_y, 5.25, gm_y + 0.55, PURPLE)
+# guarded model bar
+gy = 3.35
+draw_box(ax, 2.2, gy, 6.2, 0.6,
+         "GuardedBedrockModel — checks breaker before every call",
+         fill=TEAL, text_color=WHITE, title_size=9.8, prefix="",
+         emoji="🔒", radius=0.05)
+for x0 in hx:
+    arrow(ax, x0 + hw / 2, hy, x0 + hw / 2, gy + 0.6, INDIGO)
 
 # ── AWS Bedrock ───────────────────────────────────────────────────────
-bedrock_y = 3.8
-draw_box(ax, 2.75, bedrock_y, 5.0, 0.65, "AWS Bedrock",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         text_color=ORANGE_DARK, fontsize=13, bold=True)
-
-# arrow from guarded model to bedrock
-draw_arrow(ax, 5.25, gm_y, 5.25, bedrock_y + 0.65, ORANGE)
+by = 2.05
+draw_box(ax, 2.9, by, 4.8, 0.7, "AWS Bedrock",
+         fill=ORANGE, text_color=WHITE, title_size=14, prefix="",
+         emoji="☁️", radius=0.05)
+arrow(ax, 5.3, gy, 5.3, by + 0.7, ORANGE)
 
 # ── bottom services ──────────────────────────────────────────────────
-svc_y = 2.7
-svc_h = 0.7
-svc_w = 2.6
+sy, sh, sw = 0.45, 0.78, 2.7
+sx = [0.7, 3.9, 7.1]
+draw_box(ax, sx[0], sy, sw, sh, "Contract\nSummarizer",
+         fill=WHITE, text_color=BLACK, title_size=10, prefix="",
+         emoji="📝", radius=0.05)
+draw_box(ax, sx[1], sy, sw, sh, "Document\nParser",
+         fill=WHITE, text_color=BLACK, title_size=10, prefix="",
+         emoji="📄", radius=0.05)
+draw_box(ax, sx[2], sy, sw, sh, "Titan Embed\nText",
+         fill=WHITE, text_color=BLACK, title_size=10, prefix="",
+         emoji="🧬", radius=0.05)
+for x0 in sx:
+    elbow(ax, 5.3, by, x0 + sw / 2, sy + sh, ORANGE)
 
-sx1 = 0.65
-draw_box(ax, sx1, svc_y, svc_w, svc_h,
-         "Contract\nSummarizer",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         text_color=ORANGE_DARK, fontsize=9.5)
+# ── render + composite emojis with Pillow ────────────────────────────
+fig.canvas.draw()
+renderer = fig.canvas.get_renderer()
+H = int(fig.bbox.height)
 
-sx2 = sx1 + svc_w + gap
-draw_box(ax, sx2, svc_y, svc_w, svc_h,
-         "Document\nParser",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         text_color=ORANGE_DARK, fontsize=9.5)
+buf = io.BytesIO()
+fig.savefig(buf, dpi=DPI, facecolor=WHITE, format="png")
+plt.close(fig)
+buf.seek(0)
+canvas = Image.open(buf).convert("RGBA")
+scale = canvas.height / H  # savefig dpi vs display dpi
 
-sx3 = sx2 + svc_w + gap
-draw_box(ax, sx3, svc_y, svc_w, svc_h,
-         "Titan Embed\nText",
-         border_color=ORANGE, fill_color=ORANGE_FILL,
-         text_color=ORANGE_DARK, fontsize=9.5)
+# NotoColorEmoji only ships a 109px strike
+base_font = ImageFont.truetype(EMOJI_FONT, 109)
 
-# arrows from bedrock to bottom
-for sx in [sx1 + svc_w / 2, sx2 + svc_w / 2, sx3 + svc_w / 2]:
-    draw_arrow(ax, 5.25, bedrock_y, sx, svc_y + svc_h, ORANGE)
 
-# ── save ──────────────────────────────────────────────────────────────
-plt.tight_layout(pad=0.3)
-fig.savefig("/home/user/Factor-AI/docs/legal.png",
-            dpi=120, facecolor=WHITE, bbox_inches="tight",
-            pad_inches=0.3)
-plt.close()
-print("Saved updated docs/legal.png")
-PYEOF
+def render_emoji(char, target_px):
+    layer = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.text((8, 8), char, font=base_font, embedded_color=True)
+    bbox = layer.getbbox()
+    if not bbox:
+        return None
+    glyph = layer.crop(bbox)
+    ratio = target_px / max(glyph.size)
+    return glyph.resize(
+        (max(1, int(glyph.width * ratio)), max(1, int(glyph.height * ratio))),
+        Image.LANCZOS,
+    )
+
+
+for text_obj, data_cy, char, fontsize in _emoji_queue:
+    ext = text_obj.get_window_extent(renderer)  # display px, origin bottom-left
+    target = int(fontsize * DPI / 72 * 1.35)
+    glyph = render_emoji(char, target)
+    if glyph is None:
+        continue
+    px_right = ext.x1 * scale
+    cy_disp = (ext.y0 + ext.y1) / 2.0
+    py_center = (H - cy_disp) * scale
+    paste_x = int(px_right + 6 * scale)
+    paste_y = int(py_center - glyph.height / 2)
+    canvas.alpha_composite(glyph, (paste_x, paste_y))
+
+canvas.save("/home/user/Factor-AI/docs/legal.png")
+print("Saved docs/legal.png", canvas.size)
