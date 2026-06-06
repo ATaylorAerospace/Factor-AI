@@ -9,6 +9,8 @@ from strands.models.bedrock import BedrockModel
 
 from factor.agents.prompts import KNOWLEDGE_PROMPT
 from factor.config import settings
+from factor.harness.circuit_breaker import CircuitBreaker
+from factor.harness.model_wrapper import GuardedBedrockModel
 from factor.tools.rag import search_synthetic_knowledge
 from factor.tools.classification import classify_domain
 from factor.tools.citations import extract_citations
@@ -16,16 +18,22 @@ from factor.tools.citations import extract_citations
 logger = logging.getLogger(__name__)
 
 
-def create_knowledge_agent() -> Agent:
+def create_knowledge_agent(breaker: CircuitBreaker | None = None) -> Agent:
     """Create and return the Knowledge Agent.
 
     The Knowledge Agent searches the synthetic legal knowledge base,
     classifies provisions by domain, and extracts/labels citations.
+
+    Args:
+        breaker: Optional circuit breaker for financial guardrails.
     """
     model = BedrockModel(
         model_id=settings.bedrock_model_id,
         region_name=settings.aws_region,
     )
+
+    if breaker is not None:
+        model = GuardedBedrockModel(model, breaker)
 
     agent = Agent(
         model=model,
@@ -33,5 +41,6 @@ def create_knowledge_agent() -> Agent:
         tools=[search_synthetic_knowledge, classify_domain, extract_citations],
     )
 
-    logger.info("Created Knowledge Agent with model=%s", settings.bedrock_model_id)
+    logger.info("Created Knowledge Agent with model=%s guarded=%s",
+                settings.bedrock_model_id, breaker is not None)
     return agent

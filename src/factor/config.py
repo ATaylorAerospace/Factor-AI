@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     factor_s3_bucket: str = "factor-documents"
     factor_allowed_origins: str = "*"
 
+    # Phoenix / Guardrail Harness
+    phoenix_enabled: bool = True
+    phoenix_otlp_endpoint: str = "http://localhost:6006/v1/traces"
+    guardrail_enabled: bool = True
+    guardrail_session_budget_usd: float = 5.0
+    guardrail_max_steps: int = 200
+    guardrail_loop_window: int = 10
+    guardrail_loop_threshold: int = 5
+    guardrail_input_cost_per_1m: float = 3.0
+    guardrail_output_cost_per_1m: float = 15.0
+
     # Cognito
     factor_cognito_user_pool_id: str = ""
     factor_cognito_client_id: str = ""
