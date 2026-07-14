@@ -117,8 +117,18 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
                 detail=f"File {f.filename} exceeds {settings.factor_max_upload_mb}MB limit",
             )
 
-        file_path = upload_dir / (f.filename or f"document_{len(saved_paths)}")
+        safe_name = Path(f.filename).name if f.filename else ""
+        if not safe_name or safe_name in (".", ".."):
+            safe_name = f"document_{len(saved_paths)}"
+        file_path = (upload_dir / safe_name).resolve()
+        if not file_path.is_relative_to(upload_dir.resolve()):
+            raise HTTPException(status_code=400, detail=f"Invalid filename: {f.filename}")
         content = await f.read()
+        if len(content) > settings.max_upload_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {f.filename} exceeds {settings.factor_max_upload_mb}MB limit",
+            )
         file_path.write_bytes(content)
         saved_paths.append(str(file_path))
 
@@ -169,7 +179,7 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
 
             for doc_id, provisions in all_provisions.items():
                 detected_types = []
-                for prov in provisions:
+                for prov_index, prov in enumerate(provisions):
                     detection = detect_provision_type(provision_text=prov["text"])
                     prov["provision_type"] = detection["provision_type"]
                     detected_types.append(detection["provision_type"])
@@ -179,7 +189,10 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
                     all_risk_scores.append(risk)
 
                     if breaker:
-                        breaker.record_step(action="score_risk", meta={"doc_id": doc_id})
+                        breaker.record_step(
+                            action="score_risk",
+                            meta={"doc_id": doc_id, "provision_index": prov_index},
+                        )
 
                 gaps = find_gaps(detected_provisions=detected_types, doc_type="unknown")
                 for gap in gaps:
