@@ -228,17 +228,17 @@ def export_html(report: dict, output_path: str) -> str:
     <div class="disclaimer">
         <strong>⚠️ Note:</strong> Content in this section may reference synthetic data from Taylor658/synthetic-legal. All citations are artificially generated.
     </div>
-    {% if section.items %}
+    {% if section['items'] %}
     <table>
         <thead>
             <tr>
-                {% for key in section.items[0].keys() %}
+                {% for key in section['items'][0].keys() %}
                 <th>{{ key | replace('_', ' ') | title }}</th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
-            {% for item in section.items %}
+            {% for item in section['items'] %}
             <tr>
                 {% for val in item.values() %}
                 <td>{{ val }}</td>
@@ -260,7 +260,7 @@ def export_html(report: dict, output_path: str) -> str:
 </body>
 </html>"""
 
-    env = Environment(loader=BaseLoader())
+    env = Environment(loader=BaseLoader(), autoescape=True)
     template = env.from_string(template_str)
     html_content = template.render(report=report)
 

@@ -55,7 +55,10 @@ class CircuitBreaker:
     ) -> None:
         """Record a reasoning step and check trip conditions."""
         self.budget.record(input_tokens, output_tokens, meta)
-        self.loop_detector.record(action)
+        signature = action
+        if meta:
+            signature = f"{action}:{sorted(meta.items())!r}"
+        self.loop_detector.record(signature)
 
         logger.debug(
             "Session %s step: action=%s in=%d out=%d cost=$%.4f",

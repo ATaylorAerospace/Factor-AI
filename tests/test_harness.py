@@ -165,6 +165,38 @@ class TestCircuitBreaker:
         assert exc_info.value.status["reason"] == "reasoning_loop"
         assert exc_info.value.status["loop_signature"] == "stuck_tool"
 
+    def test_distinct_meta_does_not_trip_loop(self):
+        """Repeating the same action over distinct items is not a loop."""
+        breaker = CircuitBreaker(
+            session_id="test-session",
+            max_budget_usd=1000.0,
+            max_steps=1000,
+            loop_window=10,
+            loop_threshold=5,
+        )
+        for i in range(20):
+            breaker.record_step(
+                action="score_risk",
+                meta={"doc_id": "doc-1", "provision_index": i},
+            )
+        assert not breaker.is_tripped
+
+    def test_identical_meta_still_trips_loop(self):
+        breaker = CircuitBreaker(
+            session_id="test-session",
+            max_budget_usd=1000.0,
+            max_steps=1000,
+            loop_window=10,
+            loop_threshold=3,
+        )
+        with pytest.raises(ReasoningLoopError):
+            for _ in range(5):
+                breaker.record_step(
+                    action="score_risk",
+                    meta={"doc_id": "doc-1", "provision_index": 0},
+                )
+        assert breaker.is_tripped
+
     def test_status_report(self):
         breaker = CircuitBreaker(session_id="test-session", max_budget_usd=5.0)
         breaker.record_step(input_tokens=1000, output_tokens=500, action="analyze")

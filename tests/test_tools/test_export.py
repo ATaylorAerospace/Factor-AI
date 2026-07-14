@@ -78,6 +78,31 @@ def test_export_html_creates_file(sample_analysis_results, temp_dir):
     assert "synthetic" in content.lower()
 
 
+def test_export_html_escapes_document_content(temp_dir):
+    """Document-derived text must be HTML-escaped in the exported report."""
+    results = {
+        "risk_scores": [
+            {
+                "provision_id": "prov-1",
+                "risk_level": "high",
+                "score": 7.5,
+                "factors": [],
+                "explanation": "<script>alert('xss')</script>",
+                "is_synthetic": True,
+            },
+        ],
+        "gaps": [],
+        "comparisons": [],
+        "document_count": 1,
+    }
+    report = build_risk_report(analysis_results=results)
+    path = f"{temp_dir}/test_report_escaping.html"
+    export_html(report=report, output_path=path)
+    content = Path(path).read_text()
+    assert "<script>alert" not in content
+    assert "&lt;script&gt;" in content
+
+
 def test_export_html_contains_risk_sections(sample_analysis_results, temp_dir):
     """HTML report should render all sections from the report."""
     report = build_risk_report(analysis_results=sample_analysis_results)
