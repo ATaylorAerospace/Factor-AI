@@ -7,7 +7,9 @@ import { Disclaimer } from './components/shared/Disclaimer';
 import { useAnalysis } from './hooks/useAnalysis';
 
 function HomePage() {
-  const { state, startAnalysis } = useAnalysis();
+  const { state, startAnalysis, reset } = useAnalysis();
+  const inProgress =
+    state.status === 'uploading' || (state.status === 'analyzing' && !state.report);
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
@@ -30,12 +32,46 @@ function HomePage() {
           <DropZone onFilesSelected={startAnalysis} />
         )}
 
-        {state.status === 'uploading' && (
-          <BatchProgress files={state.files} progress={state.progress} />
+        {inProgress && (
+          <BatchProgress files={state.files} progress={state.progress} stage={state.stage} />
         )}
 
-        {(state.status === 'analyzing' || state.status === 'complete') && state.report && (
-          <Dashboard report={state.report} trace={state.trace} />
+        {state.status === 'error' && (
+          <div
+            role="alert"
+            style={{
+              background: '#fff5f5',
+              border: '1px solid #f5c2c7',
+              borderRadius: 12,
+              padding: 24,
+              marginTop: 24,
+            }}
+          >
+            <h2 style={{ color: '#dc3545', marginTop: 0 }}>Analysis could not be completed</h2>
+            <p style={{ color: '#333' }}>{state.error}</p>
+            <button
+              onClick={reset}
+              style={{
+                padding: '8px 16px',
+                background: '#4472C4',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              Start over
+            </button>
+          </div>
+        )}
+
+        {state.status === 'complete' && state.report && (
+          <Dashboard
+            report={state.report}
+            trace={state.trace}
+            sessionId={state.sessionId}
+            onNewAnalysis={reset}
+          />
         )}
       </main>
 

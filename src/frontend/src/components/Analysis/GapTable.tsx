@@ -33,6 +33,7 @@ export function GapTable({ gaps }: GapTableProps) {
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
+            <th style={thStyle}>Document</th>
             <th style={thStyle}>Missing Provision</th>
             <th style={thStyle}>Severity</th>
             <th style={thStyle}>Recommendation</th>
@@ -41,6 +42,7 @@ export function GapTable({ gaps }: GapTableProps) {
         <tbody>
           {gaps.map((gap, i) => (
             <tr key={i}>
+              <td style={tdStyle}>{(gap.document as string) || '—'}</td>
               <td style={tdStyle}>
                 {((gap.missing_provision as string) || '').replace(/_/g, ' ')}
               </td>

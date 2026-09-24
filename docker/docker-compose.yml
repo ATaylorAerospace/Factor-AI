@@ -28,9 +28,7 @@ services:
       context: ../src/frontend
       dockerfile: ../../docker/Dockerfile.frontend
     ports:
-      - "3000:3000"
-    environment:
-      - VITE_API_URL=http://factor-api:8000
+      - "3000:3000"   # dashboard; /api/* is proxied to factor-api by nginx
     depends_on:
       - factor-api
     restart: unless-stopped

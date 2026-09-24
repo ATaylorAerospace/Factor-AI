@@ -285,3 +285,9 @@ class TestExceptions:
         assert exc.status is status
         assert "budget_exceeded" in str(exc)
         assert "5.01" in str(exc)
+
+
+class TestExceptionMessage:
+    def test_message_reports_step_count(self):
+        exc = BudgetExceededError({"reason": "step_limit_exceeded", "total_cost_usd": 0.0, "steps": 200})
+        assert "steps=200" in str(exc)

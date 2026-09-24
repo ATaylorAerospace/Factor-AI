@@ -65,3 +65,10 @@ def test_detect_returns_all_detected():
     )
     assert "all_detected" in result
     assert len(result["all_detected"]) >= 1
+
+
+def test_detect_indemnity_noun_form():
+    result = detect_provision_type(
+        provision_text="INDEMNITY. The Supplier provides an indemnity for all third-party claims."
+    )
+    assert result["provision_type"] == "indemnification"

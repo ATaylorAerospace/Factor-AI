@@ -25,7 +25,8 @@ M&A and financing due diligence requires reviewing 10–100+ contracts to identi
 
 Factor AI deploys a system of **autonomous AI agents** that collaboratively analyze batches of legal documents:
 
-- **Ingest** PDFs and DOCX files, extracting and chunking provisions
+- **Ingest** PDF, DOCX, and TXT files, extracting and chunking provisions (unreadable files are skipped with a reason, never silently dropped)
+- **Classify** each contract (NDA, lease, loan, merger, employment, license, supply) to select the right checklist
 - **Detect** provision types using pattern matching and AI classification
 - **Score** risk levels against configurable rubrics
 - **Identify** missing critical clauses via gap analysis
@@ -95,21 +96,24 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 
 ## ✨ Core Capabilities
 
-- 🔍 **Provision Detection** - 14 provision types identified via anchor patterns
+- 🔍 **Provision Detection** - 14 provision types identified via anchor patterns; section headings (`GOVERNING LAW.`, `Section 5.`, `ARTICLE VII`) stay attached to their clause
+- 🏷️ **Contract-Type Detection** - Whole-word signals pick the NDA / lease / loan / merger / employment / license / supply checklist for each document
 - 📊 **Risk Scoring** - Configurable rubrics with weighted signals (0–10 scale)
 - ⚠️ **Gap Analysis** - Standard checklists for NDAs, leases, loans, mergers, employment, license, and supply agreements
-- 🔄 **Cross-Document Comparison** - Inconsistency detection across governing law, liability caps, termination terms
+- 🔄 **Cross-Document Comparison** - Inconsistency detection across governing law, liability caps, termination terms, compared **document-to-document** (never clause-to-clause within one file)
+- 🗂️ **Per-Document Attribution** - Every risk score and gap names its source file, clause type, and a text excerpt, in the dashboard and in exports
+- 🧯 **Resilient Batches** - Corrupt, password-protected, or scanned (image-only) files are reported as *not analyzed* while the rest of the batch completes
 - 📚 **RAG Knowledge Search** - Synthetic legal knowledge base (Taylor658/synthetic-legal)
 - 📋 **Structured Reports** - Executive summary, risk assessment, gap analysis, comparison results
-- 📥 **Export** - Excel (with disclaimer tab) and HTML (with disclaimers on every page)
-- ⚡ **SSE Streaming** - Real-time analysis progress via Server-Sent Events
-- 💰 **Financial Circuit Breaker** - Per-session token budget enforced at every reasoning step; agents are hard-halted before runaway cost
+- 📥 **Export** - One-click download of Excel (with disclaimer tab) and HTML (with disclaimers on every page)
+- ⚡ **SSE Streaming** - Real-time, per-document progress via Server-Sent Events; parsing and scoring run off the event loop so the server stays responsive
+- 💰 **Financial Circuit Breaker** - Per-session token budget enforced at every LLM reasoning step; agents are hard-halted before runaway cost
 - 🔁 **Reasoning Loop Detection** - Sliding-window detector halts agents stuck in repetitive, high-cost cycles
 - 📡 **Phoenix Telemetry** - OpenTelemetry traces exported to a self-hosted Arize Phoenix instance for per-step token auditing
 - 🛡️ **Session Isolation** - Cedar policies enforce per-user data access
-- 🔒 **Upload Validation** - File type enforcement (PDF, DOCX, DOC, TXT) with size limits
+- 🔒 **Upload Validation** - File type enforcement (PDF, DOCX, TXT) with size limits enforced while streaming to disk
 - 🌐 **Production CORS** - Configurable origin restrictions for production deployments
-- 🧹 **Automatic Cleanup** - Uploaded files are removed after analysis completes
+- 🧹 **Automatic Cleanup** - Uploads are removed after analysis; sessions, reports, and exports expire automatically or on `DELETE`
 
 ---
 
@@ -120,7 +124,7 @@ factor/
 ├── src/factor/              # Python backend
 │   ├── agents/              # Strands Agent definitions
 │   ├── harness/             # Financial-guardrail & Phoenix telemetry harness
-│   ├── tools/               # @tool decorated functions
+│   ├── tools/               # @tool decorated functions + contract-type detection
 │   ├── knowledge/           # ChromaDB vector store + dataset loader
 │   ├── models/              # Pydantic data models
 │   ├── aws/                 # Bedrock, AgentCore, S3, Cognito
@@ -129,6 +133,7 @@ factor/
 │   ├── app.py               # FastAPI + SSE streaming
 │   └── config.py            # pydantic-settings
 ├── src/frontend/            # React 18 + TypeScript + Vite
+│   ├── nginx.conf           # Production proxy: dashboard + /api → factor-api
 │   └── src/
 │       ├── components/      # Upload, Analysis, Report, shared
 │       ├── hooks/           # useUpload, useAnalysis, useAgentStream
@@ -170,6 +175,8 @@ OpenTelemetry span (gen_ai.usage.*) → GuardrailSpanProcessor → Arize Phoenix
 
 When a breaker trips, the `/api/v1/analyze` SSE stream emits a `guardrail_halt` event with the session's cost, step count, and trip reason.
 
+> 💡 **What counts as a step:** the breaker meters **LLM reasoning steps** (model calls and their token spend). The deterministic `/api/v1/analyze` pipeline — parsing, regex detection, and rubric scoring — makes no model calls, so it is never counted against `GUARDRAIL_MAX_STEPS`. A batch of 100 contracts with thousands of clauses runs to completion.
+
 ### Start Phoenix (self-hosted)
 
 ```bash
@@ -188,7 +195,7 @@ docker compose up -d phoenix
 | `PHOENIX_OTLP_ENDPOINT` | `http://localhost:6006/v1/traces` | Phoenix trace collector endpoint |
 | `GUARDRAIL_ENABLED` | `true` | Enable the financial circuit breaker |
 | `GUARDRAIL_SESSION_BUDGET_USD` | `5.0` | Hard cost ceiling per analysis session |
-| `GUARDRAIL_MAX_STEPS` | `200` | Maximum reasoning steps per session |
+| `GUARDRAIL_MAX_STEPS` | `200` | Maximum LLM reasoning steps per session |
 | `GUARDRAIL_LOOP_WINDOW` | `10` | Sliding window size for loop detection |
 | `GUARDRAIL_LOOP_THRESHOLD` | `5` | Repeat count within window that trips a loop |
 | `GUARDRAIL_INPUT_COST_PER_1M` | `3.0` | Input token price (USD per 1M) |
@@ -283,16 +290,42 @@ pytest tests/ -v --cov=src/factor
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/analyze` | Upload documents (PDF, DOCX, DOC, TXT) + stream agentic analysis |
-| `GET` | `/api/v1/sessions/{id}` | Session status + results |
+| `POST` | `/api/v1/analyze` | Upload documents (PDF, DOCX, TXT) + stream agentic analysis |
+| `GET` | `/api/v1/sessions/{id}` | Session status (`processing` · `completed` · `halted` · `failed`) + results |
+| `DELETE` | `/api/v1/sessions/{id}` | Delete a session, its report, and exported files |
 | `GET` | `/api/v1/sessions/{id}/trace` | Agent reasoning trace |
 | `GET` | `/api/v1/reports/{session_id}` | Structured report |
-| `GET` | `/api/v1/reports/{session_id}/export` | Download Excel/HTML |
+| `GET` | `/api/v1/reports/{session_id}/export?format=excel\|html` | Download Excel/HTML as a file attachment |
 | `GET` | `/api/v1/sessions/{id}/budget` | Real-time guardrail budget + token status |
 | `GET` | `/api/v1/guardrail/status` | Guardrail config + all active sessions |
 | `GET` | `/api/v1/knowledge/search` | Search synthetic KB |
 | `GET` | `/api/v1/knowledge/domains` | List legal domains |
 | `GET` | `/api/v1/health` | Health check |
+
+### 📡 Analysis Event Stream
+
+`POST /api/v1/analyze` answers with a Server-Sent Events stream. Events are separated by a blank line (`\r\n\r\n`); a single event — especially the `report` — can span many network reads, so clients must buffer until the blank line before parsing.
+
+| Event | When | Key fields |
+|-------|------|------------|
+| `session` | First event | `session_id` |
+| `status` | Stage changes | `stage`: `ingestion` → `analysis` → `reporting` |
+| `progress` | After each document in each stage | `stage`, `document`, `provisions_found` / `provisions_scored`, `gaps_found` |
+| `document_skipped` | A file could not be read (corrupt, encrypted, or scanned with no text) | `document`, `reason` |
+| `guardrail` | Breaker initialized / completed | budget and step status |
+| `report` | Analysis finished | full report incl. `documents` and `skipped_documents` |
+| `done` | Stream complete | `session_id` |
+| `guardrail_halt` | Circuit breaker tripped | `reason`, `steps`, `total_cost_usd` |
+| `error` | Unexpected failure (session marked `failed`) | `message`, `detail` |
+
+### ⚙️ Session Settings
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `FACTOR_SESSION_TTL_HOURS` | `24` | Sessions, reports, and exports older than this are removed |
+| `FACTOR_MAX_SESSIONS` | `500` | Oldest sessions are evicted beyond this count |
+| `FACTOR_MAX_UPLOAD_MB` | `50` | Per-file upload limit |
+| `FACTOR_MAX_BATCH_SIZE` | `100` | Files per analysis batch |
 
 ---
 
@@ -319,6 +352,9 @@ Tests cover:
 - ✅ Citation extraction (cases, statutes, regulations)
 - ✅ Report building, Excel export, and HTML export
 - ✅ Financial guardrail: budget accounting, loop detection, circuit breaker trips
+- ✅ Batch pipeline regressions: 250-clause batches, same-name uploads, unreadable and scanned files, unexpected-error events, file download, and session deletion
+- ✅ Chunking of all-caps, `Section N.`, and `ARTICLE` headings; whole-word contract-type detection
+- ✅ Session expiry and eviction
 - ✅ All outputs label synthetic content
 
 ---
@@ -330,7 +366,12 @@ Tests cover:
 ```bash
 # Start both API and frontend services
 docker compose -f docker/docker-compose.yml up --build
+
+# Dashboard: http://localhost:3000   (nginx proxies /api/* to the API container)
+# API:       http://localhost:8000
 ```
+
+> 🔌 The frontend container runs **nginx**, which serves the built dashboard and proxies `/api/*` to `factor-api` with response buffering disabled, so analysis progress streams live.
 
 ### AWS CDK (AgentCore)
 
@@ -341,6 +382,26 @@ cd infra && cdk deploy --all
 # Deploy agent configuration
 python scripts/deploy_agentcore.py --env production
 ```
+
+---
+
+## 🩹 Reliability & Accuracy Fixes
+
+The latest release hardens the batch pipeline end to end. Each fix below is covered by a regression test.
+
+| # | Area | Before | After |
+|---|------|--------|-------|
+| 1 | 💰 **Guardrail** | Every clause scored counted as a reasoning step, so batches of ~10 contracts hit `GUARDRAIL_MAX_STEPS` and halted with no report; the halt message always said `steps=0` | Only LLM steps are metered; the halt message reports the real step count |
+| 2 | 🖥️ **Dashboard streaming** | Reports larger than one network read were dropped, leaving a blank screen; progress vanished on the first event; halts and errors were never shown | Events are buffered until complete; live per-stage progress; clear error panel with *Start over* |
+| 3 | 🧯 **Unreadable files** | One corrupt PDF or `.doc` aborted the whole batch; scanned PDFs were reported as **low risk** while "missing" every clause | Bad files are listed under *Not analyzed* with a reason and the batch continues; `.doc` is rejected up front; an all-unreadable batch reports `unknown` risk |
+| 4 | 🔍 **Clause detection** | `Section 1.` headings were never split and all-caps headings were cut off, so real clauses showed up as gaps; "indemnity" wasn't recognised | Headings stay with their clause; `Section`/`Article` split in any case; `indemnity` detected |
+| 5 | 🗂️ **Document attribution** | Same-name uploads overwrote each other; results showed random IDs, with no document column | Every upload is kept (`Agreement.txt (2)`); results name their file, clause type, and excerpt |
+| 6 | ⚡ **Server responsiveness** | Parsing and scoring ran on the event loop — a `/health` check waited **2.4 s** during a 100-contract batch | Work runs in worker threads — worst `/health` latency **0.28 s** during the same batch |
+| 7 | 🔄 **Comparison** | Two clauses in *one* document were reported as a cross-document inconsistency; comparisons never appeared in the dashboard | Documents are compared to each other by name; a new *Cross-Document Inconsistencies* table |
+| 8 | 📥 **Export** | Wrote to the server's disk and showed the server path in a popup | Real Excel/HTML downloads, available from the dashboard |
+| 9 | 🐳 **Docker** | The dashboard container couldn't reach the API | nginx serves the UI and proxies `/api` |
+| 10 | 🏷️ **Contract types** | The API always used the generic checklist; the agent classified a lease mentioning "calendar" as an NDA | Whole-word type detection drives the NDA/lease/loan/... checklists |
+| 11 | 🧹 **Retention** | Sessions and reports were kept in memory and on disk forever | TTL + size-capped eviction and `DELETE /api/v1/sessions/{id}` |
 
 ---
 

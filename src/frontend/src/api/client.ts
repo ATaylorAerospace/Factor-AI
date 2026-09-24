@@ -19,7 +19,14 @@ export async function uploadAndAnalyze(
   });
 
   if (!response.ok) {
-    throw new Error(`Upload failed: ${response.statusText}`);
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch {
+      // non-JSON error body; keep the status text
+    }
+    throw new Error(`Upload failed: ${detail}`);
   }
 
   const reader = response.body?.getReader();
@@ -30,26 +37,42 @@ export async function uploadAndAnalyze(
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    buffer += decoder.decode(value, { stream: !done });
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+    // An SSE event ends with a blank line. Only complete events are parsed;
+    // the unfinished tail stays buffered until the rest of it arrives, so a
+    // large event (the report) split across network reads is never dropped.
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = done ? '' : blocks.pop() ?? '';
 
-    for (const line of lines) {
-      if (line.startsWith('event:')) {
-        const eventType = line.slice(6).trim();
-        const nextLine = lines[lines.indexOf(line) + 1];
-        if (nextLine?.startsWith('data:')) {
-          try {
-            const data = JSON.parse(nextLine.slice(5).trim());
-            onEvent({ type: eventType, data });
-          } catch {
-            // skip malformed events
-          }
-        }
-      }
+    for (const block of blocks) {
+      const event = parseSseBlock(block);
+      if (event) onEvent(event);
     }
+
+    if (done) break;
+  }
+}
+
+/** Parse one SSE event block ("event: ..." plus one or more "data: ..." lines). */
+export function parseSseBlock(block: string): { type: string; data: unknown } | null {
+  let type = 'message';
+  const dataLines: string[] = [];
+
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith('event:')) {
+      type = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).replace(/^ /, ''));
+    }
+  }
+
+  if (dataLines.length === 0) return null; // comments / keep-alive pings
+
+  try {
+    return { type, data: JSON.parse(dataLines.join('\n')) };
+  } catch {
+    return null; // skip malformed events
   }
 }
 
@@ -63,14 +86,25 @@ export async function getReport(sessionId: string): Promise<Report> {
   return data;
 }
 
-export async function exportReport(
-  sessionId: string,
-  format: 'excel' | 'html'
-): Promise<{ path: string }> {
-  const { data } = await api.get(`/reports/${sessionId}/export`, {
+/** Download the report file and hand it to the browser as a normal download. */
+export async function exportReport(sessionId: string, format: 'excel' | 'html'): Promise<void> {
+  const response = await api.get(`/reports/${sessionId}/export`, {
     params: { format },
+    responseType: 'blob',
   });
-  return data;
+
+  const disposition: string = response.headers['content-disposition'] ?? '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  const filename = match?.[1] ?? `factor-report.${format === 'excel' ? 'xlsx' : 'html'}`;
+
+  const url = URL.createObjectURL(response.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function searchKnowledge(

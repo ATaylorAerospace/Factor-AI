@@ -35,3 +35,19 @@ def test_ingest_documents_with_text_file(sample_pdf_path):
     doc_id = list(result.keys())[0]
     assert result[doc_id]["provision_count"] > 0
     assert "provisions" in result[doc_id]
+
+
+def test_infer_doc_type_ignores_nda_inside_other_words():
+    """'standard' and 'calendar' contain 'nda' but do not make a lease an NDA."""
+    text = "LEASE AGREEMENT. Landlord leases the premises for twelve calendar months at the standard rate."
+    assert _infer_doc_type(text, "lease.pdf") == "lease"
+
+
+def test_ingest_documents_reports_unreadable_file(temp_dir):
+    from pathlib import Path
+
+    broken = Path(temp_dir) / "broken.docx"
+    broken.write_bytes(b"not really a docx")
+    result = ingest_documents(file_paths=[str(broken)])
+    (entry,) = result.values()
+    assert "Could not read file" in entry["error"]

@@ -16,6 +16,7 @@ from factor.harness.model_wrapper import GuardedBedrockModel
 from factor.tools.parsing import parse_pdf, parse_docx
 from factor.tools.chunking import chunk_provisions
 from factor.tools.detection import detect_provision_type
+from factor.tools.doc_type import infer_doc_type
 from factor.tools.scoring import score_risk
 from factor.tools.gaps import find_gaps
 from factor.tools.comparison import compare_across_documents
@@ -45,12 +46,18 @@ def ingest_documents(file_paths: list[str]) -> dict:
         path = Path(fpath)
         ext = path.suffix.lower()
 
-        if ext == ".pdf":
-            parsed = parse_pdf(file_path=fpath)
-        elif ext in (".docx", ".doc"):
-            parsed = parse_docx(file_path=fpath)
-        else:
-            parsed = {"text": path.read_text(errors="replace"), "filename": path.name}
+        try:
+            if ext == ".pdf":
+                parsed = parse_pdf(file_path=fpath)
+            elif ext == ".docx":
+                parsed = parse_docx(file_path=fpath)
+            else:
+                parsed = {"text": path.read_text(errors="replace"), "filename": path.name}
+        except Exception as exc:  # noqa: BLE001 - corrupt, encrypted, or mislabeled file
+            parsed = {"error": f"Could not read file ({type(exc).__name__}): {exc}"}
+
+        if not parsed.get("error") and not parsed.get("text", "").strip():
+            parsed["error"] = "No extractable text (scanned image?). Run OCR and retry."
 
         if parsed.get("error"):
             results[doc_id] = {"error": parsed["error"], "filename": path.name}
@@ -74,20 +81,7 @@ def ingest_documents(file_paths: list[str]) -> dict:
 
 def _infer_doc_type(text: str, filename: str) -> str:
     """Infer document type from content and filename."""
-    combined = (text[:2000] + " " + filename).lower()
-    type_signals = {
-        "nda": ["non-disclosure", "nda", "confidentiality agreement"],
-        "lease": ["lease agreement", "tenant", "landlord", "premises"],
-        "loan": ["loan agreement", "borrower", "lender", "principal amount"],
-        "merger": ["merger", "acquisition", "purchase agreement", "target company"],
-        "employment": ["employment agreement", "employee", "employer", "compensation"],
-        "license": ["license agreement", "licensor", "licensee", "royalt"],
-        "supply": ["supply agreement", "supplier", "purchase order"],
-    }
-    for doc_type, signals in type_signals.items():
-        if any(s in combined for s in signals):
-            return doc_type
-    return "unknown"
+    return infer_doc_type(text, filename)
 
 
 @tool

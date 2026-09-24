@@ -33,7 +33,10 @@ def build_risk_report(analysis_results: dict) -> dict:
     high = [r for r in risk_scores if r.get("risk_level") == "high"]
     medium = [r for r in risk_scores if r.get("risk_level") == "medium"]
 
-    if critical:
+    if not risk_scores and analysis_results.get("skipped_documents"):
+        # Nothing could be read, so there is no basis for calling the batch low risk.
+        overall_risk = "unknown"
+    elif critical:
         overall_risk = "critical"
     elif high:
         overall_risk = "high"
@@ -43,6 +46,11 @@ def build_risk_report(analysis_results: dict) -> dict:
         overall_risk = "low"
 
     high_severity_gaps = [g for g in gaps if g.get("severity") in ("high", "critical")]
+    skipped = analysis_results.get("skipped_documents", [])
+    skipped_note = (
+        f" {len(skipped)} document(s) could not be analyzed and are listed separately."
+        if skipped else ""
+    )
 
     report = {
         "title": "Due Diligence Risk Report",
@@ -55,8 +63,10 @@ def build_risk_report(analysis_results: dict) -> dict:
             f"{analysis_results.get('document_count', 0)} documents. "
             f"Found {len(critical)} critical, {len(high)} high, and {len(medium)} medium "
             f"risk provisions. Identified {len(gaps)} missing provisions "
-            f"({len(high_severity_gaps)} high severity)."
+            f"({len(high_severity_gaps)} high severity).{skipped_note}"
         ),
+        "documents": analysis_results.get("documents", []),
+        "skipped_documents": skipped,
         "sections": [
             {
                 "title": "Risk Assessment",
@@ -132,7 +142,10 @@ def export_excel(report: dict, output_path: str) -> str:
 
     if risk_items:
         ws_risk = wb.create_sheet("Risk Scores")
-        headers = ["Provision ID", "Risk Level", "Score", "Factors", "Explanation"]
+        headers = [
+            "Document", "Provision Type", "Risk Level", "Score",
+            "Factors", "Explanation", "Excerpt", "Provision ID",
+        ]
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         for col, header in enumerate(headers, 1):
             cell = ws_risk.cell(row=1, column=col, value=header)
@@ -140,11 +153,14 @@ def export_excel(report: dict, output_path: str) -> str:
             cell.fill = header_fill
 
         for row, item in enumerate(risk_items, 2):
-            ws_risk.cell(row=row, column=1, value=item.get("provision_id", ""))
-            ws_risk.cell(row=row, column=2, value=item.get("risk_level", ""))
-            ws_risk.cell(row=row, column=3, value=item.get("score", 0))
-            ws_risk.cell(row=row, column=4, value="; ".join(item.get("factors", [])))
-            ws_risk.cell(row=row, column=5, value=item.get("explanation", ""))
+            ws_risk.cell(row=row, column=1, value=item.get("document", ""))
+            ws_risk.cell(row=row, column=2, value=item.get("provision_type", ""))
+            ws_risk.cell(row=row, column=3, value=item.get("risk_level", ""))
+            ws_risk.cell(row=row, column=4, value=item.get("score", 0))
+            ws_risk.cell(row=row, column=5, value="; ".join(item.get("factors", [])))
+            ws_risk.cell(row=row, column=6, value=item.get("explanation", ""))
+            ws_risk.cell(row=row, column=7, value=item.get("excerpt", ""))
+            ws_risk.cell(row=row, column=8, value=item.get("provision_id", ""))
 
     # Gaps
     gap_items = []
@@ -154,7 +170,7 @@ def export_excel(report: dict, output_path: str) -> str:
 
     if gap_items:
         ws_gaps = wb.create_sheet("Gaps")
-        headers = ["Missing Provision", "Severity", "Recommendation"]
+        headers = ["Document", "Missing Provision", "Severity", "Recommendation"]
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         for col, header in enumerate(headers, 1):
             cell = ws_gaps.cell(row=1, column=col, value=header)
@@ -162,9 +178,32 @@ def export_excel(report: dict, output_path: str) -> str:
             cell.fill = header_fill
 
         for row, item in enumerate(gap_items, 2):
-            ws_gaps.cell(row=row, column=1, value=item.get("missing_provision", ""))
-            ws_gaps.cell(row=row, column=2, value=item.get("severity", ""))
-            ws_gaps.cell(row=row, column=3, value=item.get("recommendation", ""))
+            ws_gaps.cell(row=row, column=1, value=item.get("document", ""))
+            ws_gaps.cell(row=row, column=2, value=item.get("missing_provision", ""))
+            ws_gaps.cell(row=row, column=3, value=item.get("severity", ""))
+            ws_gaps.cell(row=row, column=4, value=item.get("recommendation", ""))
+
+    # Cross-document comparisons
+    comparison_items = []
+    for section in report.get("sections", []):
+        if section.get("title") == "Cross-Document Comparison":
+            comparison_items = section.get("items", [])
+
+    if comparison_items:
+        ws_comp = wb.create_sheet("Comparisons")
+        headers = ["Provision Type", "Risk Level", "Documents", "Inconsistencies"]
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        for col, header in enumerate(headers, 1):
+            cell = ws_comp.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+
+        for row, item in enumerate(comparison_items, 2):
+            documents = item.get("document_names") or item.get("documents_compared", [])
+            ws_comp.cell(row=row, column=1, value=item.get("provision_type", ""))
+            ws_comp.cell(row=row, column=2, value=item.get("risk_level", ""))
+            ws_comp.cell(row=row, column=3, value=", ".join(documents))
+            ws_comp.cell(row=row, column=4, value="; ".join(item.get("inconsistencies", [])))
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
