@@ -14,7 +14,7 @@ class CircuitBreakerTripped(Exception):
     def _format(status: dict) -> str:
         reason = status.get("reason", "unknown")
         cost = status.get("total_cost_usd", 0)
-        steps = status.get("total_steps", 0)
+        steps = status.get("steps", status.get("total_steps", 0))
         return (
             f"Circuit breaker tripped: {reason} "
             f"(cost=${cost:.4f}, steps={steps})"

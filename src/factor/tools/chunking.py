@@ -11,7 +11,7 @@ from strands import tool
 logger = logging.getLogger(__name__)
 
 PROVISION_ANCHORS = [
-    r"(?i)\b(indemnif|hold harmless)",
+    r"(?i)\b(indemni(?:f|t)|hold harmless)",
     r"(?i)\b(limitation of liability|limit.{0,10}liab)",
     r"(?i)\b(non-?assignment|assign.{0,10}clause)",
     r"(?i)\b(confidential|non-?disclosure)",
@@ -27,10 +27,15 @@ PROVISION_ANCHORS = [
     r"(?i)\b(notice|notification)",
 ]
 
+# Zero-width lookahead: split *before* each heading so the heading stays with
+# its clause ("GOVERNING LAW." is the strongest signal for classification).
+# "Section"/"Article" match in any case; all-caps headings must end in ":" or ".".
 SECTION_PATTERN = re.compile(
-    r"^(?:\d+[\.\)]\s|[A-Z][A-Z\s]{2,}[:\.]|ARTICLE\s+\w+|SECTION\s+\d+)",
+    r"^(?=[ \t]*(?:\d+[\.\)]\s|(?i:section|article)\s+[\dIVXLC]+\b|[A-Z][A-Z &\-]{2,}[:\.]))",
     re.MULTILINE,
 )
+
+MIN_CHUNK_CHARS = 30
 
 
 def _detect_anchor(text: str) -> str | None:
@@ -66,18 +71,23 @@ def chunk_provisions(text: str, doc_type: str = "unknown") -> list[dict]:
 
     splits = SECTION_PATTERN.split(text)
     raw_chunks: list[str] = []
+    pending = ""  # short fragments (e.g. a bare "ARTICLE VII" line) join the next clause
 
     for part in splits:
         stripped = part.strip()
         if not stripped:
             continue
-        if len(stripped) < 30:
-            if raw_chunks:
-                raw_chunks[-1] += "\n" + stripped
-            else:
-                raw_chunks.append(stripped)
+        if len(stripped) < MIN_CHUNK_CHARS:
+            pending = f"{pending}\n{stripped}" if pending else stripped
+            continue
+        raw_chunks.append(f"{pending}\n{stripped}" if pending else stripped)
+        pending = ""
+
+    if pending:
+        if raw_chunks:
+            raw_chunks[-1] += "\n" + pending
         else:
-            raw_chunks.append(stripped)
+            raw_chunks.append(pending)
 
     if not raw_chunks and text.strip():
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]

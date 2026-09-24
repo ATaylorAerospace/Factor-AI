@@ -22,6 +22,9 @@ const riskColors: Record<string, string> = {
 export function ProvisionCard({ provision }: ProvisionCardProps) {
   const riskLevel = (provision.risk_level as string) || 'low';
   const factors = (provision.factors as string[]) || [];
+  const provisionType = ((provision.provision_type as string) || '').replace(/_/g, ' ');
+  const documentName = provision.document as string | undefined;
+  const excerpt = provision.excerpt as string | undefined;
 
   return (
     <div
@@ -35,9 +38,14 @@ export function ProvisionCard({ provision }: ProvisionCardProps) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         {riskIcons[riskLevel]}
-        <strong style={{ flex: 1 }}>
-          {(provision.provision_id as string) || 'Provision'}
-        </strong>
+        <div style={{ flex: 1 }}>
+          <strong style={{ textTransform: 'capitalize' }}>{provisionType || 'Provision'}</strong>
+          {documentName && (
+            <span style={{ color: '#6c757d', fontSize: '0.85em', marginLeft: 8 }}>
+              {documentName}
+            </span>
+          )}
+        </div>
         <span
           style={{
             textTransform: 'uppercase',
@@ -49,6 +57,21 @@ export function ProvisionCard({ provision }: ProvisionCardProps) {
           {riskLevel} — {String(provision.score || 0)}/10
         </span>
       </div>
+
+      {excerpt && (
+        <blockquote
+          style={{
+            margin: '4px 0 8px',
+            padding: '6px 10px',
+            borderLeft: '3px solid #dee2e6',
+            color: '#333',
+            fontSize: '0.85em',
+            fontStyle: 'italic',
+          }}
+        >
+          {excerpt}
+        </blockquote>
+      )}
 
       <p style={{ color: '#555', fontSize: '0.9em', margin: '4px 0' }}>
         {provision.explanation as string}

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 PROVISION_PATTERNS: dict[str, list[str]] = {
     "indemnification": [
-        r"(?i)indemnif",
+        r"(?i)indemni(?:f|t)",
         r"(?i)hold\s+harmless",
         r"(?i)defend\s+and\s+indemnif",
     ],

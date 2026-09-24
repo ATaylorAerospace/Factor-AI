@@ -1,11 +1,13 @@
 import { useState, useCallback } from 'react';
 import { uploadAndAnalyze } from '../api/client';
-import type { AnalysisState, Report } from '../types';
+import type { AnalysisStage, AnalysisState, Report, SkippedDocument } from '../types';
 
 const initialState: AnalysisState = {
   status: 'idle',
   files: [],
   progress: 0,
+  stage: null,
+  skipped: [],
   report: null,
   trace: [],
   sessionId: null,
@@ -22,54 +24,80 @@ export function useAnalysis() {
       files,
     });
 
+    let gotReport = false;
+    let failed = false;
+
+    const fail = (message: string) => {
+      failed = true;
+      setState((prev) => ({ ...prev, status: 'error', error: message }));
+    };
+
     try {
       await uploadAndAnalyze(files, (event) => {
+        const data = event.data as Record<string, unknown>;
+
         switch (event.type) {
           case 'session':
             setState((prev) => ({
               ...prev,
-              sessionId: (event.data as { session_id: string }).session_id,
+              sessionId: data.session_id as string,
               status: 'analyzing',
-            }));
-            break;
-
-          case 'progress':
-            setState((prev) => ({
-              ...prev,
-              progress: prev.progress + 1,
             }));
             break;
 
           case 'status':
             setState((prev) => ({
               ...prev,
+              stage: data.stage as AnalysisStage,
+              progress: 0,
               trace: [
                 ...prev.trace,
                 {
                   agent: 'coordinator',
-                  action: (event.data as { stage: string }).stage,
+                  action: data.stage as string,
                   timestamp: Date.now(),
-                  details: event.data as Record<string, unknown>,
+                  details: data,
                 },
               ],
             }));
             break;
 
-          case 'report':
+          case 'progress':
+            setState((prev) => ({ ...prev, progress: prev.progress + 1 }));
+            break;
+
+          case 'document_skipped':
             setState((prev) => ({
               ...prev,
-              report: event.data as Report,
+              progress: prev.progress + 1,
+              skipped: [...prev.skipped, data as unknown as SkippedDocument],
+            }));
+            break;
+
+          case 'report':
+            gotReport = true;
+            setState((prev) => ({
+              ...prev,
+              report: data as unknown as Report,
               status: 'complete',
             }));
             break;
+
+          case 'guardrail_halt':
+            fail(`Analysis halted by the cost guardrail: ${(data.message as string) || 'limit reached'}`);
+            break;
+
+          case 'error':
+            fail((data.message as string) || 'Analysis failed');
+            break;
         }
       });
+
+      if (!gotReport && !failed) {
+        fail('The analysis ended before a report was produced. Please try again.');
+      }
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        status: 'error',
-        error: err instanceof Error ? err.message : 'Analysis failed',
-      }));
+      fail(err instanceof Error ? err.message : 'Analysis failed');
     }
   }, []);
 

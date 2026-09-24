@@ -12,8 +12,7 @@ export function ExportButton({ sessionId }: ExportButtonProps) {
   const handleExport = async (format: 'excel' | 'html') => {
     setExporting(true);
     try {
-      const result = await exportReport(sessionId, format);
-      alert(`Report exported to: ${result.path}`);
+      await exportReport(sessionId, format);
     } catch (err) {
       alert(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {

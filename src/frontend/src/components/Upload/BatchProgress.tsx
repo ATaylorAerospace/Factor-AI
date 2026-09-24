@@ -1,12 +1,23 @@
 import { Loader2 } from 'lucide-react';
+import type { AnalysisStage } from '../../types';
 
 interface BatchProgressProps {
   files: File[];
   progress: number;
+  stage: AnalysisStage | null;
 }
 
-export function BatchProgress({ files, progress }: BatchProgressProps) {
-  const percentage = files.length > 0 ? Math.round((progress / files.length) * 100) : 0;
+const STAGE_LABELS: Record<AnalysisStage, string> = {
+  ingestion: 'Reading documents',
+  analysis: 'Analyzing provisions',
+  reporting: 'Generating report',
+};
+
+export function BatchProgress({ files, progress, stage }: BatchProgressProps) {
+  const done = Math.min(progress, files.length);
+  const percentage =
+    stage === 'reporting' ? 100 : files.length > 0 ? Math.round((done / files.length) * 100) : 0;
+  const title = stage ? STAGE_LABELS[stage] : 'Uploading documents';
 
   return (
     <div
@@ -24,7 +35,7 @@ export function BatchProgress({ files, progress }: BatchProgressProps) {
           color="#4472C4"
           style={{ animation: 'spin 1s linear infinite' }}
         />
-        <h2 style={{ color: '#1a1a2e', margin: 0 }}>Processing Documents</h2>
+        <h2 style={{ color: '#1a1a2e', margin: 0 }}>{title}</h2>
       </div>
 
       <div
@@ -48,7 +59,9 @@ export function BatchProgress({ files, progress }: BatchProgressProps) {
       </div>
 
       <p style={{ color: '#6c757d', margin: 0 }}>
-        {progress} of {files.length} documents processed ({percentage}%)
+        {stage === 'reporting'
+          ? 'Assembling the risk report...'
+          : `${done} of ${files.length} documents ${stage === 'analysis' ? 'analyzed' : 'processed'} (${percentage}%)`}
       </p>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

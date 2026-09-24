@@ -53,7 +53,7 @@ export function ReportViewer() {
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
         <Disclaimer />
-        <Dashboard report={report} trace={[]} />
+        <Dashboard report={report} trace={[]} sessionId={sessionId} />
       </main>
     </div>
   );

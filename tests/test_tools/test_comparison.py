@@ -61,3 +61,42 @@ def test_compare_termination_cure_period_inconsistency():
     term = [c for c in result["comparisons"] if c["provision_type"] == "termination"]
     assert len(term) == 1
     assert any("Cure period" in i for i in term[0]["inconsistencies"])
+
+
+def test_compare_ignores_differences_within_one_document():
+    """Two termination clauses in the same document are not a cross-document issue."""
+    result = compare_across_documents(provisions_by_doc={
+        "doc-1": [
+            {"provision_type": "termination", "text": "Terminate for cause on 30 days notice and cure."},
+            {"provision_type": "termination", "text": "Terminate for convenience immediately."},
+        ],
+    })
+    assert result["comparisons"] == []
+
+
+def test_compare_counts_documents_and_uses_labels():
+    result = compare_across_documents(
+        provisions_by_doc={
+            "doc-1": [
+                {"provision_type": "termination", "text": "Terminate with a 30 day cure period."},
+                {"provision_type": "termination", "text": "Terminate for convenience."},
+            ],
+            "doc-2": [{"provision_type": "termination", "text": "Terminate immediately."}],
+        },
+        doc_labels={"doc-1": "msa.pdf", "doc-2": "nda.pdf"},
+    )
+    term = result["comparisons"][0]
+    assert term["documents_compared"] == ["doc-1", "doc-2"]
+    assert term["document_names"] == ["msa.pdf", "nda.pdf"]
+    assert any("present in [msa.pdf], absent in [nda.pdf]" in i for i in term["inconsistencies"])
+    assert any("across 2 of 2 documents" in i for i in term["inconsistencies"])
+
+
+def test_compare_cap_detection_uses_whole_words():
+    """'capital' and 'escape' must not count as a liability cap."""
+    result = compare_across_documents(provisions_by_doc={
+        "doc-1": [{"provision_type": "indemnification", "text": "Indemnify for losses to capital."}],
+        "doc-2": [{"provision_type": "indemnification", "text": "Indemnify; no escape from duty."}],
+    })
+    indem = result["comparisons"][0]
+    assert not any("cap inconsistency" in i for i in indem["inconsistencies"])

@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     factor_log_level: str = "INFO"
     factor_s3_bucket: str = "factor-documents"
     factor_allowed_origins: str = "*"
+    factor_session_ttl_hours: float = 24.0
+    factor_max_sessions: int = 500
 
     # Phoenix / Guardrail Harness
     phoenix_enabled: bool = True

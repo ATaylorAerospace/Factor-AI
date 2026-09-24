@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { parseSseBlock } from '../api/client';
 import type { TraceEntry } from '../types';
 
 interface StreamState {
@@ -35,32 +36,26 @@ export function useAgentStream() {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
+        // The server separates events with "\r\n\r\n"; splitting on "\n\n" never matched.
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() ?? '';
 
-        for (const block of lines) {
-          const eventMatch = block.match(/^event:\s*(.+)$/m);
-          const dataMatch = block.match(/^data:\s*(.+)$/m);
-
-          if (eventMatch && dataMatch) {
-            try {
-              const data = JSON.parse(dataMatch[1]);
-              setState((prev) => ({
-                ...prev,
-                events: [
-                  ...prev.events,
-                  {
-                    agent: data.agent || 'system',
-                    action: eventMatch[1],
-                    timestamp: Date.now(),
-                    details: data,
-                  },
-                ],
-              }));
-            } catch {
-              // skip malformed events
-            }
-          }
+        for (const block of blocks) {
+          const event = parseSseBlock(block);
+          if (!event) continue;
+          const data = event.data as Record<string, unknown>;
+          setState((prev) => ({
+            ...prev,
+            events: [
+              ...prev.events,
+              {
+                agent: (data.agent as string) || 'system',
+                action: event.type,
+                timestamp: Date.now(),
+                details: data,
+              },
+            ],
+          }));
         }
       }
 

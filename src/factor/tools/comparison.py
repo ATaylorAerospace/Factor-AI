@@ -3,98 +3,99 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 
 from strands import tool
 
 logger = logging.getLogger(__name__)
 
+JURISDICTIONS = [
+    "new york", "delaware", "california", "texas", "illinois",
+    "florida", "massachusetts", "washington", "virginia",
+    "england", "singapore", "hong kong",
+]
+CAP_PATTERN = re.compile(r"\b(?:cap|caps|capped|limit|limited|limitation|aggregate|maximum)\b", re.IGNORECASE)
+CURE_PATTERN = re.compile(r"\b(?:cure|cured|remedy period)\b", re.IGNORECASE)
+
 
 @tool
-def compare_across_documents(provisions_by_doc: dict[str, list[dict]]) -> dict:
+def compare_across_documents(
+    provisions_by_doc: dict[str, list[dict]],
+    doc_labels: dict[str, str] | None = None,
+) -> dict:
     """Cross-document comparison for inconsistencies and conflicts.
 
     Compares provisions of the same type across multiple documents to find
-    inconsistencies in terms, jurisdictions, and risk levels.
+    inconsistencies in terms, jurisdictions, and risk levels. Provisions are
+    grouped per document first, so differences between clauses of a single
+    document are never reported as cross-document inconsistencies.
 
     Args:
         provisions_by_doc: Mapping of document_id to list of provision dicts.
             Each provision dict must have 'provision_type' and 'text' keys.
+        doc_labels: Optional mapping of document_id to a display name
+            (e.g. the original filename) used in inconsistency messages.
 
     Returns:
         Dictionary with comparison results grouped by provision type.
     """
-    by_type: dict[str, list[dict]] = defaultdict(list)
+    labels = doc_labels or {}
 
+    # provision type -> document id -> texts of that type in the document
+    by_type: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for doc_id, provisions in provisions_by_doc.items():
         for prov in provisions:
             ptype = prov.get("provision_type", "other")
-            by_type[ptype].append({
-                "document_id": doc_id,
-                "text": prov.get("text", ""),
-                "provision_type": ptype,
-            })
+            by_type[ptype][doc_id].append(prov.get("text", ""))
 
     results = []
 
-    for ptype, provs in by_type.items():
-        if len(provs) < 2:
+    for ptype, docs in by_type.items():
+        if len(docs) < 2:
             continue
 
+        doc_ids = list(docs)
+        doc_text = {doc_id: "\n".join(texts).lower() for doc_id, texts in docs.items()}
+
+        def names(ids: list[str]) -> str:
+            return ", ".join(labels.get(i, i) for i in ids)
+
         inconsistencies = []
-        doc_ids = [p["document_id"] for p in provs]
 
         if ptype == "governing_law":
-            jurisdictions = set()
-            for p in provs:
-                text_lower = p["text"].lower()
-                for state in [
-                    "new york", "delaware", "california", "texas", "illinois",
-                    "florida", "massachusetts", "washington", "virginia",
-                    "england", "singapore", "hong kong",
-                ]:
-                    if state in text_lower:
-                        jurisdictions.add(state)
+            per_doc = {
+                doc_id: {j for j in JURISDICTIONS if j in text}
+                for doc_id, text in doc_text.items()
+            }
+            jurisdictions = set().union(*per_doc.values())
             if len(jurisdictions) > 1:
                 inconsistencies.append(
-                    f"Multiple governing law jurisdictions detected: {', '.join(jurisdictions)}"
+                    f"Multiple governing law jurisdictions detected: {', '.join(sorted(jurisdictions))}"
                 )
 
         if ptype in ("indemnification", "limitation_of_liability"):
-            has_cap = []
-            no_cap = []
-            for p in provs:
-                text_lower = p["text"].lower()
-                if any(w in text_lower for w in ["cap", "limit", "aggregate", "maximum"]):
-                    has_cap.append(p["document_id"])
-                else:
-                    no_cap.append(p["document_id"])
+            has_cap = [d for d in doc_ids if CAP_PATTERN.search(doc_text[d])]
+            no_cap = [d for d in doc_ids if d not in has_cap]
             if has_cap and no_cap:
                 inconsistencies.append(
-                    f"Liability cap inconsistency: capped in [{', '.join(has_cap)}], "
-                    f"uncapped in [{', '.join(no_cap)}]"
+                    f"Liability cap inconsistency: capped in [{names(has_cap)}], "
+                    f"uncapped in [{names(no_cap)}]"
                 )
 
         if ptype == "termination":
-            cure_period = []
-            no_cure = []
-            for p in provs:
-                text_lower = p["text"].lower()
-                if any(w in text_lower for w in ["cure", "remedy period", "days to cure"]):
-                    cure_period.append(p["document_id"])
-                else:
-                    no_cure.append(p["document_id"])
-            if cure_period and no_cure:
+            cure = [d for d in doc_ids if CURE_PATTERN.search(doc_text[d])]
+            no_cure = [d for d in doc_ids if d not in cure]
+            if cure and no_cure:
                 inconsistencies.append(
-                    f"Cure period inconsistency: present in [{', '.join(cure_period)}], "
-                    f"absent in [{', '.join(no_cure)}]"
+                    f"Cure period inconsistency: present in [{names(cure)}], "
+                    f"absent in [{names(no_cure)}]"
                 )
 
-        texts = [p["text"].strip() for p in provs]
-        unique_texts = set(texts)
-        if len(unique_texts) > 1:
+        normalized = {" ".join(text.split()) for text in doc_text.values()}
+        if len(normalized) > 1:
             inconsistencies.append(
-                f"Language varies across {len(unique_texts)} documents for '{ptype}'"
+                f"Language varies across {len(normalized)} of {len(doc_ids)} documents for '{ptype}'"
             )
 
         risk_level = "low"
@@ -106,9 +107,10 @@ def compare_across_documents(provisions_by_doc: dict[str, list[dict]]) -> dict:
         results.append({
             "provision_type": ptype,
             "documents_compared": doc_ids,
+            "document_names": [labels.get(d, d) for d in doc_ids],
             "inconsistencies": inconsistencies,
             "risk_level": risk_level,
-            "count": len(provs),
+            "count": sum(len(texts) for texts in docs.values()),
         })
 
     logger.info(
