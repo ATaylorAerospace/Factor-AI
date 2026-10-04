@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 import chromadb
@@ -24,6 +25,9 @@ class VectorStoreManager:
     def __init__(self):
         self._collection = None
         self._persist_dir: str | None = None
+        # Requests run in FastAPI's threadpool; two first callers must not each
+        # open a PersistentClient on the same directory.
+        self._lock = threading.Lock()
 
     def get_collection(self, persist_dir: str | None = None) -> chromadb.Collection:
         """Get or create the ChromaDB collection for synthetic legal data.
@@ -37,44 +41,46 @@ class VectorStoreManager:
         """
         target_dir = persist_dir or settings.factor_knowledge_path
 
-        if self._collection is not None and self._persist_dir == target_dir:
+        with self._lock:
+            if self._collection is not None and self._persist_dir == target_dir:
+                return self._collection
+
+            Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+            client = chromadb.PersistentClient(path=target_dir)
+
+            self._collection = client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                metadata={
+                    "source": "Taylor658/synthetic-legal",
+                    "is_synthetic": "true",
+                    "disclaimer": "ALL content including citations is synthetically generated",
+                },
+            )
+            self._persist_dir = target_dir
+
+            logger.info(
+                "ChromaDB collection '%s' ready at %s (%d documents)",
+                COLLECTION_NAME,
+                target_dir,
+                self._collection.count(),
+            )
+
             return self._collection
-
-        Path(target_dir).mkdir(parents=True, exist_ok=True)
-
-        client = chromadb.PersistentClient(path=target_dir)
-
-        self._collection = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            metadata={
-                "source": "Taylor658/synthetic-legal",
-                "is_synthetic": "true",
-                "disclaimer": "ALL content including citations is synthetically generated",
-            },
-        )
-        self._persist_dir = target_dir
-
-        logger.info(
-            "ChromaDB collection '%s' ready at %s (%d documents)",
-            COLLECTION_NAME,
-            target_dir,
-            self._collection.count(),
-        )
-
-        return self._collection
 
     def reset(self, persist_dir: str | None = None) -> None:
         """Delete and recreate the collection."""
-        persist_path = persist_dir or self._persist_dir or settings.factor_knowledge_path
-        client = chromadb.PersistentClient(path=persist_path)
+        with self._lock:
+            persist_path = persist_dir or self._persist_dir or settings.factor_knowledge_path
+            client = chromadb.PersistentClient(path=persist_path)
 
-        try:
-            client.delete_collection(COLLECTION_NAME)
-        except ValueError:
-            pass
+            try:
+                client.delete_collection(COLLECTION_NAME)
+            except ValueError:
+                pass
 
-        self._collection = None
-        self._persist_dir = None
+            self._collection = None
+            self._persist_dir = None
         logger.info("Reset collection '%s'", COLLECTION_NAME)
 
 

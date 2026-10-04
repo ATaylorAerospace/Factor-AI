@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
+from opentelemetry.context import Context
+from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
     SimpleSpanProcessor,
-    SpanExporter,
     ConsoleSpanExporter,
 )
 
@@ -17,11 +18,16 @@ from factor.config import settings
 logger = logging.getLogger(__name__)
 
 _initialized = False
+_guardrail_processor: GuardrailSpanProcessor | None = None
 
 
-class GuardrailSpanProcessor(SimpleSpanProcessor):
+class GuardrailSpanProcessor(SpanProcessor):
     """SpanProcessor that extracts token usage from OTel spans and feeds
     it to the active circuit breaker for the session.
+
+    It does no exporting itself. ``on_end`` must stay synchronous so a
+    tripped breaker propagates up the agent's call stack, so the network
+    export is handled by a separate ``BatchSpanProcessor`` off this path.
 
     Works with both OpenInference and OpenTelemetry GenAI semantic
     conventions for token count attributes.
@@ -37,16 +43,22 @@ class GuardrailSpanProcessor(SimpleSpanProcessor):
         ("strands.input_tokens", "strands.output_tokens"),
     ]
 
-    def __init__(self, exporter: SpanExporter):
-        super().__init__(exporter)
+    def __init__(self):
         self._guardrail = None
 
     def set_guardrail(self, guardrail) -> None:
         self._guardrail = guardrail
 
-    def on_end(self, span: ReadableSpan) -> None:
-        super().on_end(span)
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        pass
 
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+    def on_end(self, span: ReadableSpan) -> None:
         if self._guardrail is None:
             return
 
@@ -83,10 +95,10 @@ def init_phoenix_tracing(service_name: str = "factor") -> tuple[trace.Tracer, Gu
         Tuple of (tracer, guardrail_processor).  The processor is None
         when Phoenix is not available.
     """
-    global _initialized
+    global _initialized, _guardrail_processor
 
     if _initialized:
-        return trace.get_tracer(service_name), None
+        return trace.get_tracer(service_name), _guardrail_processor
 
     provider = TracerProvider()
     guardrail_processor = None
@@ -98,8 +110,12 @@ def init_phoenix_tracing(service_name: str = "factor") -> tuple[trace.Tracer, Gu
             phoenix_exporter = OTLPSpanExporter(
                 endpoint=settings.phoenix_otlp_endpoint,
             )
-            guardrail_processor = GuardrailSpanProcessor(phoenix_exporter)
+            # Guardrail first so the breaker sees token counts before the span is queued.
+            guardrail_processor = GuardrailSpanProcessor()
             provider.add_span_processor(guardrail_processor)
+            # Batching keeps the HTTP export (and any unreachable-endpoint
+            # retries) off the agent's call path.
+            provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
             logger.info("Phoenix OTLP exporter configured: %s", settings.phoenix_otlp_endpoint)
         except ImportError:
             logger.warning("opentelemetry-exporter-otlp not installed, falling back to console")
@@ -110,5 +126,6 @@ def init_phoenix_tracing(service_name: str = "factor") -> tuple[trace.Tracer, Gu
 
     trace.set_tracer_provider(provider)
     _initialized = True
+    _guardrail_processor = guardrail_processor
 
     return trace.get_tracer(service_name), guardrail_processor

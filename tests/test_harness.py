@@ -291,3 +291,32 @@ class TestExceptionMessage:
     def test_message_reports_step_count(self):
         exc = BudgetExceededError({"reason": "step_limit_exceeded", "total_cost_usd": 0.0, "steps": 200})
         assert "steps=200" in str(exc)
+
+
+def test_guardrail_span_processor_feeds_breaker_without_exporting():
+    """The processor only forwards token counts; exporting is a separate processor."""
+    from unittest.mock import MagicMock
+
+    from opentelemetry.sdk.trace.export import SpanExporter
+
+    from factor.harness.telemetry import GuardrailSpanProcessor
+
+    processor = GuardrailSpanProcessor()
+    assert not isinstance(processor, SpanExporter)
+
+    guardrail = MagicMock()
+    processor.set_guardrail(guardrail)
+
+    span = MagicMock()
+    span.name = "model_call"
+    span.attributes = {
+        "gen_ai.usage.input_tokens": 120,
+        "gen_ai.usage.output_tokens": 30,
+        "session.id": "s-1",
+    }
+    processor.on_end(span)
+
+    guardrail.record_from_span.assert_called_once_with(
+        session_id="s-1", input_tokens=120, output_tokens=30, action="model_call"
+    )
+    assert processor.force_flush() is True

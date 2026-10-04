@@ -305,7 +305,7 @@ def export_html(report: dict, output_path: str) -> str:
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(html_content)
+    path.write_text(html_content, encoding="utf-8")
 
     logger.info("Exported HTML report to %s", output_path)
     return str(path)

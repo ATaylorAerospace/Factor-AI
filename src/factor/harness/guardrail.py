@@ -7,7 +7,6 @@ import threading
 
 from factor.config import settings
 from factor.harness.circuit_breaker import CircuitBreaker
-from factor.harness.exceptions import CircuitBreakerTripped
 
 logger = logging.getLogger(__name__)
 
@@ -63,21 +62,19 @@ class FinancialGuardrail:
         """Called by `GuardrailSpanProcessor` when a span with token data ends.
 
         Silently ignores unknown session IDs (spans from background work).
+        A tripped breaker raises `CircuitBreakerTripped`, which propagates up
+        the call stack to halt the agent.
         """
         if session_id is None:
             return
         breaker = self.get_breaker(session_id)
         if breaker is None:
             return
-        try:
-            breaker.record_step(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                action=action,
-            )
-        except CircuitBreakerTripped:
-            # Let it propagate up the call stack to halt the agent
-            raise
+        breaker.record_step(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            action=action,
+        )
 
     def session_status(self, session_id: str) -> dict | None:
         breaker = self.get_breaker(session_id)

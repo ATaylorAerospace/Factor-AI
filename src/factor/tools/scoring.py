@@ -118,7 +118,7 @@ def score_risk(provision: dict, rubric: dict | None = None) -> dict:
         f"Identified {len(factors)} relevant factors."
     )
 
-    logger.info("Scored provision %s: %s (%.1f)", provision.get("id", "?"), risk_level, score)
+    logger.debug("Scored provision %s: %s (%.1f)", provision.get("id", "?"), risk_level, score)
 
     return {
         "provision_id": provision.get("id", ""),

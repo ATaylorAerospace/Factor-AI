@@ -9,9 +9,14 @@ from strands import tool
 
 logger = logging.getLogger(__name__)
 
+# A party name is a run of up to eight capitalised tokens (plus "of"/"the"/
+# "and"/"&"). The previous open-ended `[a-zA-Z\s]+` swallowed the preceding
+# sentence into the plaintiff and backtracked quadratically on long prose.
+_PARTY = r"[A-Z][\w&.']*(?:\s+(?:[A-Z][\w&.']*|of|the|and|&)){0,7}"
 CASE_CITATION_PATTERN = re.compile(
-    r"([A-Z][a-zA-Z\s&,.']+)\s+v\.\s+([A-Z][a-zA-Z\s&,.']+),?\s*"
-    r"(\d+\s+[A-Z][a-zA-Z.\s]+\d+)?"
+    rf"({_PARTY})\s+v\.\s+({_PARTY}),?\s*"
+    # reporter: volume, up to five reporter tokens ("F.3d", "Cal. App. 3d"), page
+    r"(\d+\s+[A-Z][\w.]*(?:\s+[\w.]+){0,4}?\s+\d+)?"
 )
 STATUTE_PATTERN = re.compile(
     r"(\d+)\s+(U\.?S\.?C\.?|C\.?F\.?R\.?|Stat\.?)\s*§?\s*(\d+[a-z]?(?:\([a-z0-9]+\))?)"

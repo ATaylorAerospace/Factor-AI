@@ -25,46 +25,23 @@ def search_synthetic_knowledge(query: str, domain: str | None = None, top_k: int
         List of result dictionaries with synthetic content and metadata.
     """
     try:
-        from factor.knowledge.vectorstore import get_vectorstore
+        from factor.knowledge.vectorstore import query as vector_query
 
-        store = get_vectorstore()
-        where_filter = None
-        if domain:
-            where_filter = {"legal_domain": domain}
-
-        results = store.query(
-            query_texts=[query],
-            n_results=min(top_k, 20),
-            where=where_filter,
-        )
-
-        hits = []
-        if results and results.get("documents"):
-            for i, doc in enumerate(results["documents"][0]):
-                meta = {}
-                if results.get("metadatas") and results["metadatas"][0]:
-                    meta = results["metadatas"][0][i]
-
-                hits.append({
-                    "content": doc,
-                    "legal_domain": meta.get("legal_domain", "unknown"),
-                    "source": "Taylor658/synthetic-legal",
-                    "is_synthetic": True,
-                    "disclaimer": (
-                        "ALL content including citations is synthetically generated "
-                        "and NOT legally accurate."
-                    ),
-                    "score": (
-                        results["distances"][0][i]
-                        if results.get("distances")
-                        else None
-                    ),
-                    "id": (
-                        results["ids"][0][i]
-                        if results.get("ids")
-                        else str(i)
-                    ),
-                })
+        hits = [
+            {
+                "content": hit["content"],
+                "legal_domain": (hit["metadata"] or {}).get("legal_domain", "unknown"),
+                "source": "Taylor658/synthetic-legal",
+                "is_synthetic": True,
+                "disclaimer": (
+                    "ALL content including citations is synthetically generated "
+                    "and NOT legally accurate."
+                ),
+                "score": hit["distance"],
+                "id": hit["id"],
+            }
+            for hit in vector_query(query, n_results=min(top_k, 20), domain_filter=domain)
+        ]
 
         logger.info(
             "Knowledge search: query=%r, domain=%s, results=%d",

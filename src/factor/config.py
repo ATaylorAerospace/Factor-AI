@@ -63,10 +63,20 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        """Parse allowed origins from comma-separated string."""
-        if self.factor_allowed_origins == "*" and not self.is_production:
-            return ["*"]
-        return [o.strip() for o in self.factor_allowed_origins.split(",") if o.strip()]
+        """Parse allowed origins from comma-separated string.
+
+        A wildcard is only honoured outside production; a production deployment
+        that has not configured explicit origins gets none rather than ``*``.
+        """
+        origins = [o.strip() for o in self.factor_allowed_origins.split(",") if o.strip()]
+        if "*" in origins:
+            return [] if self.is_production else ["*"]
+        return origins
+
+    @property
+    def cors_allow_credentials(self) -> bool:
+        """Credentials cannot be combined with a wildcard origin (CORS spec)."""
+        return "*" not in self.cors_origins
 
 
 settings = Settings()

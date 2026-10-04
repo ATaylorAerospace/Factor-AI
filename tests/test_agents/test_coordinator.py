@@ -1,7 +1,8 @@
 """Tests for the Coordinator Agent."""
 
 
-from factor.agents.coordinator import _infer_doc_type, ingest_documents
+from factor.agents.coordinator import ingest_documents
+from factor.tools.doc_type import infer_doc_type as _infer_doc_type
 
 
 def test_infer_doc_type_nda():

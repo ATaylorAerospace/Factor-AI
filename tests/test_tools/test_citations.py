@@ -64,3 +64,22 @@ def test_all_citations_marked_synthetic():
         assert citation["is_synthetic"] is True
         assert "warning" in citation
         assert "synthetic" in citation["warning"].lower()
+
+
+def test_case_citation_does_not_swallow_preceding_sentence():
+    text = "The court in the earlier matter held otherwise. Acme Corp. v. Beta Holdings LLC, 45 F.3d 100."
+    cases = [c for c in extract_citations(text=text) if c["type"] == "case"]
+    assert len(cases) == 1
+    assert cases[0]["plaintiff"] == "Acme Corp."
+    assert cases[0]["defendant"] == "Beta Holdings LLC"
+    assert cases[0]["reporter"] == "45 F.3d 100"
+
+
+def test_case_citation_pattern_is_fast_on_capitalised_prose():
+    import time
+
+    # Long run of capitalised tokens with no "v." — the old pattern backtracked badly here.
+    text = " ".join("Word" for _ in range(5000))
+    start = time.perf_counter()
+    extract_citations(text=text)
+    assert time.perf_counter() - start < 1.0
