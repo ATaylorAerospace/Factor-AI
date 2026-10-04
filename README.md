@@ -112,8 +112,12 @@ Factor AI deploys a system of **autonomous AI agents** that collaboratively anal
 - 📡 **Phoenix Telemetry** - OpenTelemetry traces exported to a self-hosted Arize Phoenix instance for per-step token auditing
 - 🛡️ **Session Isolation** - Cedar policies enforce per-user data access
 - 🔒 **Upload Validation** - File type enforcement (PDF, DOCX, TXT) with size limits enforced while streaming to disk
-- 🌐 **Production CORS** - Configurable origin restrictions for production deployments
+- 🌐 **Production CORS** - Explicit origin allow-list; a wildcard (`*`) is honoured in development only and is **never** applied in production, and credentials are never paired with a wildcard
 - 🧹 **Automatic Cleanup** - Uploads are removed after analysis; sessions, reports, and exports expire automatically or on `DELETE`
+- 🚀 **Non-Blocking Telemetry** - Token auditing runs synchronously on each span (so the breaker can still halt the agent), while OTLP export to Phoenix is batched off the agent's call path — an unreachable Phoenix never stalls analysis
+- 🧵 **Thread-Safe Knowledge Base** - Vector-store initialisation is lock-guarded, so concurrent first requests in FastAPI's threadpool can't open duplicate ChromaDB clients
+- 🏎️ **Hot-Path Efficiency** - Detection and chunking regexes are compiled once at import; per-clause logging is `DEBUG`-level; parsers hold the document text once (per-page detail is opt-in via `include_details=True`)
+- 🔤 **Portable Exports** - HTML reports are always written as UTF-8, independent of the host's locale
 
 ---
 
@@ -161,8 +165,12 @@ Agent step → GuardedBedrockModel → CircuitBreaker.check()
                                        ├── SessionBudget   (token cost accounting)
                                        └── LoopDetector    (repetitive-cycle detection)
                                        ↓ trip → BudgetExceededError / ReasoningLoopError
-OpenTelemetry span (gen_ai.usage.*) → GuardrailSpanProcessor → Arize Phoenix (OTLP)
+
+OpenTelemetry span (gen_ai.usage.*) ─┬→ GuardrailSpanProcessor  (sync: feeds the breaker, no I/O)
+                                     └→ BatchSpanProcessor      (async: OTLP export → Arize Phoenix)
 ```
+
+The two span processors are deliberately separate: guardrail accounting must run **synchronously** on span end so a tripped breaker propagates up the agent's call stack, whereas the network export is **batched on a background thread** so an unreachable Phoenix endpoint can never block a reasoning step.
 
 | Component | Responsibility |
 |-----------|----------------|
@@ -171,7 +179,8 @@ OpenTelemetry span (gen_ai.usage.*) → GuardrailSpanProcessor → Arize Phoenix
 | `CircuitBreaker` | Combines budget + step-limit + loop checks; raises to **hard-halt** the agent |
 | `GuardedBedrockModel` | Proxy around `BedrockModel` that checks the breaker before every invocation |
 | `FinancialGuardrail` | Singleton registry of per-session circuit breakers |
-| `GuardrailSpanProcessor` | Extracts token counts from OTel spans and feeds the breaker; exports to Phoenix |
+| `GuardrailSpanProcessor` | Extracts token counts from OTel spans and feeds the breaker — synchronous, no network I/O |
+| `BatchSpanProcessor` + `OTLPSpanExporter` | Queues spans and ships them to Phoenix in the background |
 
 When a breaker trips, the `/api/v1/analyze` SSE stream emits a `guardrail_halt` event with the session's cost, step count, and trip reason.
 
@@ -224,6 +233,9 @@ python -m venv .venv && source .venv/bin/activate
 
 # Install Python dependencies
 pip install -r requirements.txt
+
+# …or install Factor as an editable package (with dev extras)
+pip install -e ".[dev]"
 
 # Seed the knowledge base
 python scripts/seed_knowledge_base.py
@@ -326,6 +338,8 @@ pytest tests/ -v --cov=src/factor
 | `FACTOR_MAX_SESSIONS` | `500` | Oldest sessions are evicted beyond this count |
 | `FACTOR_MAX_UPLOAD_MB` | `50` | Per-file upload limit |
 | `FACTOR_MAX_BATCH_SIZE` | `100` | Files per analysis batch |
+| `FACTOR_ENV` | `development` | `development` · `staging` · `production` — controls CORS strictness |
+| `FACTOR_ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins. `*` is accepted only outside production; a production deployment must list explicit origins or no cross-origin requests are allowed |
 
 ---
 
@@ -355,7 +369,13 @@ Tests cover:
 - ✅ Batch pipeline regressions: 250-clause batches, same-name uploads, unreadable and scanned files, unexpected-error events, file download, and session deletion
 - ✅ Chunking of all-caps, `Section N.`, and `ARTICLE` headings; whole-word contract-type detection
 - ✅ Session expiry and eviction
+- ✅ CORS settings: wildcard allowed in development, dropped in production, credentials never paired with `*`
+- ✅ HTML export is byte-for-byte UTF-8; parsers return per-page detail only when asked
+- ✅ Guardrail span processor feeds the breaker without performing any export
+- ✅ Citation regex: party names never swallow the preceding sentence; linear-time on long capitalised prose
 - ✅ All outputs label synthetic content
+
+> 🧮 **142 tests** run in CI on Python 3.11 and 3.12.
 
 ---
 
@@ -402,6 +422,39 @@ The latest release hardens the batch pipeline end to end. Each fix below is cove
 | 9 | 🐳 **Docker** | The dashboard container couldn't reach the API | nginx serves the UI and proxies `/api` |
 | 10 | 🏷️ **Contract types** | The API always used the generic checklist; the agent classified a lease mentioning "calendar" as an NDA | Whole-word type detection drives the NDA/lease/loan/... checklists |
 | 11 | 🧹 **Retention** | Sessions and reports were kept in memory and on disk forever | TTL + size-capped eviction and `DELETE /api/v1/sessions/{id}` |
+
+### 🔧 Round 2 — Packaging, Security & Efficiency
+
+A follow-up code review swept the whole backend. Every item below is covered by a regression test, and the suite grew from 105 to **142** tests.
+
+#### 🐛 Bugs fixed
+
+| # | Area | Before | After |
+|---|------|--------|-------|
+| 12 | 📦 **Packaging** | `pyproject.toml` carried both a PEP 639 `license = "MIT"` expression *and* the legacy license classifier, so modern setuptools refused to build — `pip install -e .` failed outright | Classifier removed; the package builds and installs as `pip install -e ".[dev]"` |
+| 13 | 🧪 **Orphaned tests** | `tests/test_tools/test_citations` had no `.py` extension, so its six tests were never collected | Renamed; all citation tests run in CI |
+| 14 | 🌐 **CORS** | The production guard was dead code — with the default `FACTOR_ALLOWED_ORIGINS=*`, production still answered with `Access-Control-Allow-Origin: *`; credentials were paired with the wildcard in dev (invalid per spec) | `*` is honoured only outside production; `allow_credentials` is derived from the origin list and never combined with `*` |
+| 15 | 🔤 **HTML export** | Written with the host's locale encoding while declaring UTF-8 and containing `⚠️` — `UnicodeEncodeError` on Windows | Always written as UTF-8 |
+| 16 | 📄 **PDF parsing** | `doc.close()` was not in a `finally`; a malformed page leaked the PyMuPDF handle | Parsed inside a `with fitz.open(...)` context manager |
+| 17 | 📚 **Vector store** | `get_collection()` had no lock; two first requests in the FastAPI threadpool could open two `PersistentClient`s on the same directory | Creation is lock-guarded |
+| 18 | 📑 **Citation regex** | Open-ended party-name pattern swallowed the preceding sentence into the plaintiff and backtracked quadratically on capitalised prose | Party names are bounded runs of capitalised tokens; reporter matching is token-based |
+
+#### ⚡ Efficiency
+
+| # | Area | Before | After |
+|---|------|--------|-------|
+| 19 | 📡 **Telemetry** | `GuardrailSpanProcessor` extended `SimpleSpanProcessor`, performing a **blocking HTTP export per span** on the agent's hot path — with Phoenix enabled by default and unreachable, every span stalled | Guardrail accounting is a pure synchronous processor; export moved to a `BatchSpanProcessor` on a background thread |
+| 20 | 🔍 **Detection & chunking** | ~50 regexes re-parsed via `re.findall` / `re.search` for every clause; anchor labels rebuilt per call | All patterns compiled once at import |
+| 21 | 📝 **Logging** | Two `INFO` lines per clause — thousands of lines on a 100-contract batch | Per-clause logs are `DEBUG`; per-document summaries stay at `INFO` |
+| 22 | 🧠 **Parser memory** | `page_details` / `paragraph_details` duplicated the entire document text even though the pipeline only reads `text` | Detail is opt-in (`include_details=True`), halving peak memory per upload |
+
+#### 🧹 Cleanups
+
+- FastAPI startup migrated from the deprecated `@app.on_event("startup")` to a **lifespan** handler (no more deprecation warning in test runs)
+- Deleted the empty stray `docs/test.py`
+- Removed the Coordinator's pass-through `_infer_doc_type` wrapper and the guardrail's no-op `try/except … raise`
+- `search_synthetic_knowledge` now delegates to `vectorstore.query` instead of re-implementing hit construction
+- `init_phoenix_tracing` keeps the guardrail processor across repeat calls instead of returning `None`
 
 ---
 
