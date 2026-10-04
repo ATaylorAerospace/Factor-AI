@@ -89,6 +89,12 @@ PROVISION_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
+# Compiled once: this runs on every provision of every document in a batch.
+_COMPILED_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    ptype: [re.compile(p) for p in patterns]
+    for ptype, patterns in PROVISION_PATTERNS.items()
+}
+
 
 @tool
 def detect_provision_type(provision_text: str) -> dict:
@@ -112,11 +118,11 @@ def detect_provision_type(provision_text: str) -> dict:
     scores: dict[str, int] = {}
     matches_detail: dict[str, list[str]] = {}
 
-    for ptype, patterns in PROVISION_PATTERNS.items():
+    for ptype, patterns in _COMPILED_PATTERNS.items():
         match_count = 0
         matched = []
         for pattern in patterns:
-            found = re.findall(pattern, provision_text)
+            found = pattern.findall(provision_text)
             if found:
                 match_count += len(found)
                 matched.extend(found)
@@ -135,7 +141,7 @@ def detect_provision_type(provision_text: str) -> dict:
     total_matches = sum(scores.values())
     confidence = min(scores[best_type] / max(total_matches, 1), 1.0)
 
-    logger.info("Detected provision type: %s (confidence=%.2f)", best_type, confidence)
+    logger.debug("Detected provision type: %s (confidence=%.2f)", best_type, confidence)
 
     return {
         "provision_type": best_type,

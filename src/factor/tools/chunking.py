@@ -27,6 +27,18 @@ PROVISION_ANCHORS = [
     r"(?i)\b(notice|notification)",
 ]
 
+ANCHOR_LABELS = [
+    "indemnification", "limitation_of_liability", "non_assignment",
+    "confidentiality", "non_compete", "termination", "governing_law",
+    "force_majeure", "change_of_control", "representations_warranties",
+    "entire_agreement", "severability", "waiver", "notice",
+]
+
+# (compiled pattern, label) pairs in priority order; built once at import.
+_COMPILED_ANCHORS = [
+    (re.compile(pattern), label) for pattern, label in zip(PROVISION_ANCHORS, ANCHOR_LABELS)
+]
+
 # Zero-width lookahead: split *before* each heading so the heading stays with
 # its clause ("GOVERNING LAW." is the strongest signal for classification).
 # "Section"/"Article" match in any case; all-caps headings must end in ":" or ".".
@@ -40,14 +52,8 @@ MIN_CHUNK_CHARS = 30
 
 def _detect_anchor(text: str) -> str | None:
     """Return the first matching provision anchor label, or None."""
-    anchor_labels = [
-        "indemnification", "limitation_of_liability", "non_assignment",
-        "confidentiality", "non_compete", "termination", "governing_law",
-        "force_majeure", "change_of_control", "representations_warranties",
-        "entire_agreement", "severability", "waiver", "notice",
-    ]
-    for pattern, label in zip(PROVISION_ANCHORS, anchor_labels):
-        if re.search(pattern, text):
+    for pattern, label in _COMPILED_ANCHORS:
+        if pattern.search(text):
             return label
     return None
 

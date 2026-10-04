@@ -64,7 +64,7 @@ def ingest_documents(file_paths: list[str]) -> dict:
             continue
 
         text = parsed.get("text", "")
-        doc_type = _infer_doc_type(text, path.name)
+        doc_type = infer_doc_type(text, path.name)
         provisions = chunk_provisions(text=text, doc_type=doc_type)
 
         results[doc_id] = {
@@ -77,11 +77,6 @@ def ingest_documents(file_paths: list[str]) -> dict:
 
     logger.info("Ingested %d documents", len(results))
     return results
-
-
-def _infer_doc_type(text: str, filename: str) -> str:
-    """Infer document type from content and filename."""
-    return infer_doc_type(text, filename)
 
 
 @tool

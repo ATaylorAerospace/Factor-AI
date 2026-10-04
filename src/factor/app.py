@@ -8,6 +8,7 @@ import logging
 import shutil
 import uuid
 from collections import Counter
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -41,33 +42,9 @@ NO_TEXT_REASON = (
     "Run OCR on it and upload it again."
 )
 
-app = FastAPI(
-    title="Factor — Agentic AI Legal Due Diligence",
-    version=__version__,
-    description=(
-        "Autonomous AI agents for batch contract analysis. "
-        "Built with AWS Strands Agents SDK and Bedrock AgentCore. "
-        f"\n\n{DISCLAIMER}"
-    ),
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=not settings.is_production,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-session_store = SessionStore(
-    ttl_seconds=settings.factor_session_ttl_hours * 3600,
-    max_sessions=settings.factor_max_sessions,
-)
-
-
-@app.on_event("startup")
-async def configure_logging():
-    """Configure logging from FACTOR_LOG_LEVEL setting."""
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Configure logging and telemetry once at startup."""
     log_level = getattr(logging, settings.factor_log_level.upper(), logging.INFO)
     logging.basicConfig(
         level=log_level,
@@ -83,6 +60,33 @@ async def configure_logging():
         from factor.aws.observability import init_tracing
         init_tracing("factor")
         logger.info("Phoenix telemetry initialized")
+
+    yield
+
+
+app = FastAPI(
+    title="Factor — Agentic AI Legal Due Diligence",
+    version=__version__,
+    description=(
+        "Autonomous AI agents for batch contract analysis. "
+        "Built with AWS Strands Agents SDK and Bedrock AgentCore. "
+        f"\n\n{DISCLAIMER}"
+    ),
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+session_store = SessionStore(
+    ttl_seconds=settings.factor_session_ttl_hours * 3600,
+    max_sessions=settings.factor_max_sessions,
+)
 
 
 def _unique_labels(filenames: list[str]) -> list[str]:

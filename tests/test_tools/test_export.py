@@ -112,3 +112,14 @@ def test_export_html_contains_risk_sections(sample_analysis_results, temp_dir):
     assert "Risk Assessment" in content
     assert "Gap Analysis" in content
     assert "Cross-Document Comparison" in content
+
+
+def test_export_html_written_as_utf8(sample_analysis_results, temp_dir):
+    """The page declares UTF-8 and contains non-ASCII, so it must be written as UTF-8
+    regardless of the platform's locale encoding."""
+    report = build_risk_report(analysis_results=sample_analysis_results)
+    path = Path(temp_dir) / "report.html"
+    export_html(report=report, output_path=str(path))
+    raw = path.read_bytes()
+    assert "⚠️".encode("utf-8") in raw
+    raw.decode("utf-8")
