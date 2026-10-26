@@ -63,3 +63,14 @@ def test_classify_no_keywords_defaults_to_contract():
         provision_text="The quick brown fox jumps over the lazy dog."
     )
     assert result == "Contract Law & UCC Analysis"
+
+
+def test_classify_ignores_substrings_inside_unrelated_words():
+    """Short domain keywords ('ip', 'epa', 'irs', 'plea', 'visa') must not match substrings."""
+    result = classify_domain(
+        provision_text=(
+            "The partnership shall separate the first schedule and please "
+            "advise whether it is advisable for the client."
+        )
+    )
+    assert result == "Contract Law & UCC Analysis"

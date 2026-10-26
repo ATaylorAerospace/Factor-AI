@@ -4,7 +4,6 @@ from constructs import Construct
 import aws_cdk as cdk
 from aws_cdk import (
     aws_iam as iam,
-    aws_lambda as lambda_,
 )
 
 

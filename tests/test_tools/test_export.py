@@ -73,7 +73,7 @@ def test_export_html_creates_file(sample_analysis_results, temp_dir):
     path = f"{temp_dir}/test_report.html"
     result = export_html(report=report, output_path=path)
     assert Path(result).exists()
-    content = Path(result).read_text()
+    content = Path(result).read_text(encoding="utf-8")
     assert "DISCLAIMER" in content
     assert "synthetic" in content.lower()
 
@@ -98,7 +98,7 @@ def test_export_html_escapes_document_content(temp_dir):
     report = build_risk_report(analysis_results=results)
     path = f"{temp_dir}/test_report_escaping.html"
     export_html(report=report, output_path=path)
-    content = Path(path).read_text()
+    content = Path(path).read_text(encoding="utf-8")
     assert "<script>alert" not in content
     assert "&lt;script&gt;" in content
 
@@ -108,7 +108,7 @@ def test_export_html_contains_risk_sections(sample_analysis_results, temp_dir):
     report = build_risk_report(analysis_results=sample_analysis_results)
     path = f"{temp_dir}/test_report_sections.html"
     export_html(report=report, output_path=path)
-    content = Path(path).read_text()
+    content = Path(path).read_text(encoding="utf-8")
     assert "Risk Assessment" in content
     assert "Gap Analysis" in content
     assert "Cross-Document Comparison" in content

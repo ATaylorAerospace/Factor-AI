@@ -72,7 +72,8 @@ def main():
 
     collection = get_vectorstore(persist_dir=persist_dir)
     logger.info(
-        "Seeding complete. Collection '%s' now has %d documents.",
+        "Seeding complete (%d added). Collection '%s' now has %d documents.",
+        count,
         collection.name,
         collection.count(),
     )

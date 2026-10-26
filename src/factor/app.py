@@ -29,7 +29,7 @@ from factor.tools.gaps import find_gaps
 from factor.tools.comparison import compare_across_documents
 from factor.tools.export import build_risk_report, export_excel, export_html
 from factor.tools.parsing import parse_pdf, parse_docx
-from factor.db.database import SessionStore
+from factor.db.database import SessionStore, safe_session_subdir
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def _extract_text(path: Path) -> str:
     elif ext == ".docx":
         parsed = parse_docx(file_path=str(path))
     else:
-        return path.read_text(errors="replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     if parsed.get("error"):
         raise ValueError(parsed["error"])
     return parsed.get("text", "")
@@ -426,7 +426,10 @@ def export_report(
         raise HTTPException(status_code=404, detail="Report not yet generated")
 
     # Files live under reports/<session_id>/ and are removed with the session.
-    output_dir = Path(f"reports/{session_id}")
+    try:
+        output_dir = safe_session_subdir("reports", session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid session ID") from exc
     output_dir.mkdir(parents=True, exist_ok=True)
     download_name = f"factor-report-{session_id[:8]}"
 

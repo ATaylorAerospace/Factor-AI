@@ -30,9 +30,9 @@ def test_parse_pdf_returns_structure(temp_dir):
 
 
 def _make_pdf(path: Path, text: str) -> None:
-    import fitz
+    import pymupdf
 
-    doc = fitz.open()
+    doc = pymupdf.open()
     doc.new_page().insert_text((72, 72), text)
     doc.save(str(path))
     doc.close()

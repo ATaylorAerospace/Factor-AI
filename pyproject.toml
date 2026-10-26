@@ -61,6 +61,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "moto>=5.0.0",
     "pytest-cov>=5.0.0",
+    "ruff>=0.6.0",
 ]
 infra = [
     "aws-cdk-lib>=2.170.0",
