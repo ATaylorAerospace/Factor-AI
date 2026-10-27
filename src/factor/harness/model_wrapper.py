@@ -43,6 +43,18 @@ class GuardedBedrockModel:
         self._breaker.check()
         return self._model(*args, **kwargs)
 
+    # Strands 1.x drives the model through `stream()` (and `structured_output()`
+    # for typed responses); the legacy `converse`/`invoke` entry points below
+    # are kept for older SDKs. Every entry point must check the breaker, or a
+    # tripped session keeps spending tokens through the un-proxied path.
+    def stream(self, *args, **kwargs):
+        self._breaker.check()
+        return self._model.stream(*args, **kwargs)
+
+    def structured_output(self, *args, **kwargs):
+        self._breaker.check()
+        return self._model.structured_output(*args, **kwargs)
+
     def converse(self, *args, **kwargs):
         self._breaker.check()
         return self._model.converse(*args, **kwargs)

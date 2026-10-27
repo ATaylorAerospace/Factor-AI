@@ -72,3 +72,13 @@ def test_detect_indemnity_noun_form():
         provision_text="INDEMNITY. The Supplier provides an indemnity for all third-party claims."
     )
     assert result["provision_type"] == "indemnification"
+
+
+def test_matched_patterns_are_full_phrases():
+    """Patterns with inner groups must report the whole match, not the group."""
+    result = detect_provision_type(
+        provision_text="In no event shall either party be liable for consequential damages."
+    )
+    assert result["provision_type"] == "limitation_of_liability"
+    assert all(isinstance(m, str) for m in result["matched_patterns"])
+    assert any(m.lower().startswith("in no event shall") for m in result["matched_patterns"])

@@ -180,3 +180,35 @@ def test_export_downloads_file_and_delete_removes_session(tmp_path, monkeypatch)
     assert client.delete(f"/api/v1/sessions/{session_id}").status_code == 200
     assert client.get(f"/api/v1/sessions/{session_id}").status_code == 404
     assert not (tmp_path / "reports" / session_id).exists()
+
+
+def test_export_is_written_atomically(tmp_path, monkeypatch):
+    """Concurrent downloads must never see a partially written export."""
+    import threading
+
+    from factor.app import session_store
+
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    session_store.create_session("sess-atomic", ["a.txt"])
+    session_store.store_result("sess-atomic", {
+        "title": "t", "generated_at": "now", "overall_risk": "low",
+        "executive_summary": "s", "disclaimer": "d", "sections": [],
+    })
+
+    bodies: list[bytes] = []
+
+    def download():
+        r = client.get("/api/v1/reports/sess-atomic/export", params={"format": "html"})
+        assert r.status_code == 200
+        bodies.append(r.content)
+
+    threads = [threading.Thread(target=download) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(bodies) == 6
+    assert all(b.endswith(b"</html>") for b in bodies)
+    assert not list((tmp_path / "reports" / "sess-atomic").glob(".*.tmp"))

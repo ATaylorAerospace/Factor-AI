@@ -1,14 +1,37 @@
-import { useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Upload, FileText } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { useDropzone, type FileRejection } from 'react-dropzone';
+import { Upload, FileText, AlertTriangle } from 'lucide-react';
 
 interface DropZoneProps {
   onFilesSelected: (files: File[]) => void;
 }
 
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_FILES = 100;
+
+/** Human-readable reason for a file react-dropzone refused. */
+function rejectionReason(rejection: FileRejection): string {
+  const code = rejection.errors[0]?.code;
+  switch (code) {
+    case 'file-too-large':
+      return 'exceeds the 50 MB limit';
+    case 'file-invalid-type':
+      return 'is not a PDF, DOCX, or TXT file';
+    case 'too-many-files':
+      return `is over the ${MAX_FILES}-file batch limit`;
+    default:
+      return rejection.errors[0]?.message ?? 'could not be added';
+  }
+}
+
 export function DropZone({ onFilesSelected }: DropZoneProps) {
+  const [rejected, setRejected] = useState<string[]>([]);
+
   const onDrop = useCallback(
-    (accepted: File[]) => {
+    (accepted: File[], rejections: FileRejection[]) => {
+      // Files that fail validation were previously dropped silently, so a user
+      // who selected only a 60 MB PDF saw nothing happen at all.
+      setRejected(rejections.map((r) => `${r.file.name} ${rejectionReason(r)}`));
       if (accepted.length > 0) onFilesSelected(accepted);
     },
     [onFilesSelected]
@@ -21,8 +44,8 @@ export function DropZone({ onFilesSelected }: DropZoneProps) {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       'text/plain': ['.txt'],
     },
-    maxSize: 50 * 1024 * 1024,
-    maxFiles: 100,
+    maxSize: MAX_FILE_BYTES,
+    maxFiles: MAX_FILES,
   });
 
   return (
@@ -48,9 +71,31 @@ export function DropZone({ onFilesSelected }: DropZoneProps) {
           Drag & drop PDF, DOCX, or TXT files here, or click to browse
         </p>
         <p style={{ color: '#adb5bd', fontSize: '0.85em', marginTop: 8 }}>
-          Max 100 files, 50MB each
+          Max {MAX_FILES} files, 50MB each
         </p>
       </div>
+
+      {rejected.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 16,
+            padding: '12px 16px',
+            background: '#fff5f5',
+            border: '1px solid #f5c2c7',
+            borderRadius: 8,
+            color: '#842029',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <AlertTriangle size={16} />
+            <strong>Not added ({rejected.length})</strong>
+          </div>
+          {rejected.map((msg, i) => (
+            <div key={i} style={{ fontSize: '0.9em' }}>{msg}</div>
+          ))}
+        </div>
+      )}
 
       {acceptedFiles.length > 0 && (
         <div style={{ marginTop: 16 }}>

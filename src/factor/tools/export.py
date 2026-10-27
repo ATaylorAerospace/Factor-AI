@@ -213,6 +213,23 @@ def export_excel(report: dict, output_path: str) -> str:
     return str(path)
 
 
+def _format_cell(value) -> str:
+    """Render a report value for an HTML table cell.
+
+    Lists (factors, inconsistencies, document names) are joined rather than
+    printed as Python reprs; booleans read as Yes/No; None is blank.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (list, tuple)):
+        return "; ".join(_format_cell(v) for v in value)
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_format_cell(v)}" for k, v in value.items())
+    return str(value)
+
+
 @tool
 def export_html(report: dict, output_path: str) -> str:
     """Export report to HTML with disclaimers on every page.
@@ -280,7 +297,7 @@ def export_html(report: dict, output_path: str) -> str:
             {% for item in section['items'] %}
             <tr>
                 {% for val in item.values() %}
-                <td>{{ val }}</td>
+                <td>{{ val | cell }}</td>
                 {% endfor %}
             </tr>
             {% endfor %}
@@ -300,6 +317,7 @@ def export_html(report: dict, output_path: str) -> str:
 </html>"""
 
     env = Environment(loader=BaseLoader(), autoescape=True)
+    env.filters["cell"] = _format_cell
     template = env.from_string(template_str)
     html_content = template.render(report=report)
 

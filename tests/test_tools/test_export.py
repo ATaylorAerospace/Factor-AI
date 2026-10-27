@@ -123,3 +123,14 @@ def test_export_html_written_as_utf8(sample_analysis_results, temp_dir):
     raw = path.read_bytes()
     assert "⚠️".encode("utf-8") in raw
     raw.decode("utf-8")
+
+
+def test_export_html_renders_lists_as_joined_text(sample_analysis_results, temp_dir):
+    """List-valued fields (factors, inconsistencies) must not appear as Python reprs."""
+    report = build_risk_report(analysis_results=sample_analysis_results)
+    path = Path(temp_dir) / "cells.html"
+    export_html(report=report, output_path=str(path))
+    content = path.read_text(encoding="utf-8")
+    assert "[&#39;" not in content and "['" not in content
+    assert "High-risk signal: unlimited" in content
+    assert "<td>Yes</td>" in content  # is_synthetic: True

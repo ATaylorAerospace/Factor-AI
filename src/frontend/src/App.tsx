@@ -26,14 +26,20 @@ function HomePage() {
       </header>
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
-        <Disclaimer />
+        {/* The Dashboard renders its own Disclaimer once a report exists. */}
+        {state.status !== 'complete' && <Disclaimer />}
 
         {state.status === 'idle' && (
           <DropZone onFilesSelected={startAnalysis} />
         )}
 
         {inProgress && (
-          <BatchProgress files={state.files} progress={state.progress} stage={state.stage} />
+          <BatchProgress
+            files={state.files}
+            progress={state.progress}
+            stage={state.stage}
+            skippedCount={state.skipped.length}
+          />
         )}
 
         {state.status === 'error' && (

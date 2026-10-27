@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { getReport } from '../../api/client';
 import { Dashboard } from '../Analysis/Dashboard';
 import { ExportButton } from './ExportButton';
-import { Disclaimer } from '../shared/Disclaimer';
 
 export function ReportViewer() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -52,8 +51,9 @@ export function ReportViewer() {
       </header>
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
-        <Disclaimer />
-        <Dashboard report={report} trace={[]} sessionId={sessionId} />
+        {/* The header already carries the export buttons and the Dashboard
+            renders its own Disclaimer, so neither is repeated here. */}
+        <Dashboard report={report} trace={[]} />
       </main>
     </div>
   );

@@ -122,7 +122,9 @@ def detect_provision_type(provision_text: str) -> dict:
         match_count = 0
         matched = []
         for pattern in patterns:
-            found = pattern.findall(provision_text)
+            # group(0) keeps the full matched phrase; findall would return only
+            # the inner capture group (e.g. "liable") for patterns that have one.
+            found = [m.group(0) for m in pattern.finditer(provision_text)]
             if found:
                 match_count += len(found)
                 matched.extend(found)

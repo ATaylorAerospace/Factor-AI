@@ -74,6 +74,12 @@ DD_DOMAINS = [
     "Administrative Law",
 ]
 
+# Whole-word keyword patterns, compiled once: ~100 of them run per call.
+_COMPILED_KEYWORDS: dict[str, list[re.Pattern[str]]] = {
+    domain: [re.compile(rf"\b{re.escape(keyword)}\b") for keyword in keywords]
+    for domain, keywords in DOMAIN_KEYWORDS.items()
+}
+
 
 @tool
 def classify_domain(provision_text: str) -> str:
@@ -94,11 +100,8 @@ def classify_domain(provision_text: str) -> str:
     text_lower = provision_text.lower()
     scores: dict[str, int] = {}
 
-    for domain, keywords in DOMAIN_KEYWORDS.items():
-        score = 0
-        for keyword in keywords:
-            matches = len(re.findall(rf"\b{re.escape(keyword)}\b", text_lower))
-            score += matches
+    for domain, patterns in _COMPILED_KEYWORDS.items():
+        score = sum(len(pattern.findall(text_lower)) for pattern in patterns)
         if score > 0:
             scores[domain] = score
 
@@ -106,5 +109,5 @@ def classify_domain(provision_text: str) -> str:
         return "Contract Law & UCC Analysis"
 
     best_domain = max(scores, key=scores.get)  # type: ignore[arg-type]
-    logger.info("Classified provision into domain: %s (score=%d)", best_domain, scores[best_domain])
+    logger.debug("Classified provision into domain: %s (score=%d)", best_domain, scores[best_domain])
     return best_domain
