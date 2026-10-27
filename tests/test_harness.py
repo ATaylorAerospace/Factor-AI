@@ -320,3 +320,29 @@ def test_guardrail_span_processor_feeds_breaker_without_exporting():
         session_id="s-1", input_tokens=120, output_tokens=30, action="model_call"
     )
     assert processor.force_flush() is True
+
+
+def test_guarded_model_checks_breaker_on_stream_and_structured_output():
+    """Strands 1.x calls model.stream()/structured_output(); both must hit the breaker."""
+    from unittest.mock import MagicMock
+
+    from factor.harness.model_wrapper import GuardedBedrockModel
+
+    inner = MagicMock()
+    breaker = CircuitBreaker(session_id="s", max_budget_usd=0.001, input_cost_per_1m=3.0)
+    guarded = GuardedBedrockModel(inner, breaker)
+
+    guarded.stream("messages")
+    inner.stream.assert_called_once_with("messages")
+    guarded.structured_output(dict, "prompt")
+    inner.structured_output.assert_called_once_with(dict, "prompt")
+
+    with pytest.raises(BudgetExceededError):
+        breaker.record_step(input_tokens=1_000_000, output_tokens=0)
+
+    for entry_point in ("stream", "structured_output", "converse", "invoke"):
+        with pytest.raises(BudgetExceededError):
+            getattr(guarded, entry_point)("x")
+    # No further tokens were spent through any entry point after the trip.
+    assert inner.stream.call_count == 1
+    assert inner.structured_output.call_count == 1

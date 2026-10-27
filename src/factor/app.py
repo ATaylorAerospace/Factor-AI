@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import uuid
 from collections import Counter
@@ -435,16 +436,23 @@ def export_report(
 
     if format == "excel":
         path = output_dir / "report.xlsx"
-        export_excel(report=report, output_path=str(path))
-        return FileResponse(
-            path,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=f"{download_name}.xlsx",
-        )
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        exporter = export_excel
+    else:
+        path = output_dir / "report.html"
+        media_type = "text/html"
+        exporter = export_html
 
-    path = output_dir / "report.html"
-    export_html(report=report, output_path=str(path))
-    return FileResponse(path, media_type="text/html", filename=f"{download_name}.html")
+    # Export to a private temp file and swap it in atomically, so a concurrent
+    # download of the same session never reads a half-written file.
+    tmp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        exporter(report=report, output_path=str(tmp_path))
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return FileResponse(path, media_type=media_type, filename=f"{download_name}{path.suffix}")
 
 
 @app.get("/api/v1/sessions/{session_id}/budget")

@@ -74,3 +74,13 @@ def test_classify_ignores_substrings_inside_unrelated_words():
         )
     )
     assert result == "Contract Law & UCC Analysis"
+
+
+def test_classify_domain_uses_whole_words_via_compiled_patterns():
+    from factor.tools.classification import _COMPILED_KEYWORDS, DOMAIN_KEYWORDS
+
+    assert set(_COMPILED_KEYWORDS) == set(DOMAIN_KEYWORDS)
+    # "contractor" must not count as the keyword "contract".
+    assert classify_domain(provision_text="The patent infringement by the contractor.") == (
+        "Intellectual Property"
+    )

@@ -5,6 +5,9 @@ interface BatchProgressProps {
   files: File[];
   progress: number;
   stage: AnalysisStage | null;
+  /** Documents skipped during ingestion; they are not analyzed, so the
+   *  analysis stage counts only the remaining files. */
+  skippedCount?: number;
 }
 
 const STAGE_LABELS: Record<AnalysisStage, string> = {
@@ -13,10 +16,10 @@ const STAGE_LABELS: Record<AnalysisStage, string> = {
   reporting: 'Generating report',
 };
 
-export function BatchProgress({ files, progress, stage }: BatchProgressProps) {
-  const done = Math.min(progress, files.length);
-  const percentage =
-    stage === 'reporting' ? 100 : files.length > 0 ? Math.round((done / files.length) * 100) : 0;
+export function BatchProgress({ files, progress, stage, skippedCount = 0 }: BatchProgressProps) {
+  const total = stage === 'analysis' ? Math.max(files.length - skippedCount, 0) : files.length;
+  const done = Math.min(progress, total);
+  const percentage = stage === 'reporting' ? 100 : total > 0 ? Math.round((done / total) * 100) : 0;
   const title = stage ? STAGE_LABELS[stage] : 'Uploading documents';
 
   return (
@@ -61,7 +64,7 @@ export function BatchProgress({ files, progress, stage }: BatchProgressProps) {
       <p style={{ color: '#6c757d', margin: 0 }}>
         {stage === 'reporting'
           ? 'Assembling the risk report...'
-          : `${done} of ${files.length} documents ${stage === 'analysis' ? 'analyzed' : 'processed'} (${percentage}%)`}
+          : `${done} of ${total} documents ${stage === 'analysis' ? 'analyzed' : 'processed'} (${percentage}%)`}
       </p>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
