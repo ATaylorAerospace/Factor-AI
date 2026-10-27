@@ -52,7 +52,10 @@ def ingest_documents(file_paths: list[str]) -> dict:
             elif ext == ".docx":
                 parsed = parse_docx(file_path=fpath)
             else:
-                parsed = {"text": path.read_text(errors="replace"), "filename": path.name}
+                parsed = {
+                    "text": path.read_text(encoding="utf-8", errors="replace"),
+                    "filename": path.name,
+                }
         except Exception as exc:  # noqa: BLE001 - corrupt, encrypted, or mislabeled file
             parsed = {"error": f"Could not read file ({type(exc).__name__}): {exc}"}
 
@@ -95,9 +98,18 @@ def analyze_provisions(documents: dict) -> dict:
     all_risk_scores = []
     all_gaps = []
     provisions_by_doc = {}
+    doc_labels = {}
+    analyzed_docs = []
+    skipped_documents = []
 
     for doc_id, doc_data in documents.items():
+        filename = doc_data.get("filename", doc_id)
         if doc_data.get("error"):
+            skipped_documents.append({
+                "document_id": doc_id,
+                "document": filename,
+                "reason": doc_data["error"],
+            })
             continue
 
         provisions = doc_data.get("provisions", [])
@@ -111,23 +123,41 @@ def analyze_provisions(documents: dict) -> dict:
             detected_types.append(detection["provision_type"])
 
             risk = score_risk(provision=prov)
-            risk["document_id"] = doc_id
+            risk.update({
+                "document_id": doc_id,
+                "document": filename,
+                "provision_type": prov["provision_type"],
+                "excerpt": " ".join(prov["text"].split())[:240],
+            })
             all_risk_scores.append(risk)
 
         gaps = find_gaps(detected_provisions=detected_types, doc_type=doc_type)
         for gap in gaps:
             gap["document_id"] = doc_id
+            gap["document"] = filename
         all_gaps.extend(gaps)
 
         provisions_by_doc[doc_id] = provisions
+        doc_labels[doc_id] = filename
+        analyzed_docs.append({
+            "document_id": doc_id,
+            "document": filename,
+            "doc_type": doc_type,
+            "provisions_found": len(provisions),
+        })
 
-    comparison = compare_across_documents(provisions_by_doc=provisions_by_doc)
+    comparison = compare_across_documents(
+        provisions_by_doc=provisions_by_doc,
+        doc_labels=doc_labels,
+    )
 
     return {
         "risk_scores": all_risk_scores,
         "gaps": all_gaps,
         "comparisons": comparison.get("comparisons", []),
-        "document_count": len(documents),
+        "document_count": len(analyzed_docs),
+        "documents": analyzed_docs,
+        "skipped_documents": skipped_documents,
     }
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 
 from opentelemetry import trace
@@ -64,6 +65,7 @@ def trace_agent_call(agent_name: str, operation: str):
         Decorator function.
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             tracer = init_tracing()
             with tracer.start_as_current_span(

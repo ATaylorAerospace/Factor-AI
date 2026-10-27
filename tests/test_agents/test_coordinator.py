@@ -1,7 +1,7 @@
 """Tests for the Coordinator Agent."""
 
 
-from factor.agents.coordinator import ingest_documents
+from factor.agents.coordinator import analyze_provisions, ingest_documents
 from factor.tools.doc_type import infer_doc_type as _infer_doc_type
 
 
@@ -52,3 +52,41 @@ def test_ingest_documents_reports_unreadable_file(temp_dir):
     result = ingest_documents(file_paths=[str(broken)])
     (entry,) = result.values()
     assert "Could not read file" in entry["error"]
+
+
+def test_analyze_provisions_enriches_metadata_and_records_skipped_docs():
+    documents = {
+        "doc-ok": {
+            "filename": "nda_alpha.txt",
+            "doc_type": "nda",
+            "provisions": [
+                {
+                    "id": "p1",
+                    "text": (
+                        "Each Party shall indemnify and hold harmless the other "
+                        "Party against all unlimited losses."
+                    ),
+                }
+            ],
+        },
+        "doc-bad": {
+            "filename": "corrupt.pdf",
+            "error": "Could not read file",
+        },
+    }
+
+    result = analyze_provisions(documents=documents)
+
+    assert result["document_count"] == 1
+    assert len(result["documents"]) == 1
+    assert result["documents"][0]["document"] == "nda_alpha.txt"
+    assert len(result["skipped_documents"]) == 1
+    assert result["skipped_documents"][0]["document"] == "corrupt.pdf"
+
+    assert len(result["risk_scores"]) == 1
+    risk = result["risk_scores"][0]
+    assert risk["document"] == "nda_alpha.txt"
+    assert risk["provision_type"] == "indemnification"
+    assert "indemnify" in risk["excerpt"]
+
+    assert all(g["document"] == "nda_alpha.txt" for g in result["gaps"])

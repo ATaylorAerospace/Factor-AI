@@ -162,7 +162,7 @@ def main():
 
     for filename, content in docs.items():
         path = OUTPUT_DIR / filename
-        path.write_text(content)
+        path.write_text(content, encoding="utf-8")
         print(f"Generated: {path}")
 
     print(f"\nGenerated {len(docs)} sample documents in {OUTPUT_DIR}")

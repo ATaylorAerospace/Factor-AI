@@ -44,7 +44,13 @@ class CognitoAuth:
         Returns:
             User info dict if valid, None if invalid.
         """
+        if not token or not token.strip():
+            return None
+
         if not self.user_pool_id:
+            if settings.is_production:
+                logger.error("Cognito user pool not configured in production; rejecting token")
+                return None
             logger.warning("Cognito not configured, skipping token verification")
             return {"sub": "dev-user", "email": "dev@factor.local"}
 

@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import io
 
@@ -252,5 +253,6 @@ for text_obj, data_cy, char, fontsize in _emoji_queue:
     paste_y = int(py_center - glyph.height / 2)
     canvas.alpha_composite(glyph, (paste_x, paste_y))
 
-canvas.save("/home/user/Factor-AI/docs/legal.png")
+output_path = Path(__file__).resolve().parent.parent / "docs" / "legal.png"
+canvas.save(output_path)
 print("Saved docs/legal.png", canvas.size)

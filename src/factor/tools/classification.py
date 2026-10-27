@@ -97,7 +97,7 @@ def classify_domain(provision_text: str) -> str:
     for domain, keywords in DOMAIN_KEYWORDS.items():
         score = 0
         for keyword in keywords:
-            matches = len(re.findall(re.escape(keyword), text_lower))
+            matches = len(re.findall(rf"\b{re.escape(keyword)}\b", text_lower))
             score += matches
         if score > 0:
             scores[domain] = score

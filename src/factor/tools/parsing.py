@@ -23,7 +23,7 @@ def parse_pdf(file_path: str, include_details: bool = False) -> dict:
     Returns:
         Dictionary with extracted text, page count, and metadata.
     """
-    import fitz  # PyMuPDF
+    import pymupdf
 
     path = Path(file_path)
     if not path.exists():
@@ -32,7 +32,7 @@ def parse_pdf(file_path: str, include_details: bool = False) -> dict:
     pages = []
     full_text_parts = []
 
-    with fitz.open(str(path)) as doc:
+    with pymupdf.open(str(path)) as doc:
         page_count = len(doc)
         for page_num, page in enumerate(doc, 1):
             text = page.get_text("text")

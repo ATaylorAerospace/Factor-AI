@@ -44,11 +44,14 @@ class S3Storage:
             S3 key of the uploaded document.
         """
         path = Path(file_path)
-        name = filename or path.name
-        key = f"sessions/{session_id}/documents/{name}"
+        raw_name = filename or path.name
+        safe_name = Path(raw_name).name
+        if not safe_name or safe_name in (".", ".."):
+            raise ValueError(f"Invalid document filename: {raw_name!r}")
+        key = f"sessions/{session_id}/documents/{safe_name}"
 
         self.client.upload_file(str(path), self.bucket, key)
-        logger.info("Uploaded %s to s3://%s/%s", name, self.bucket, key)
+        logger.info("Uploaded %s to s3://%s/%s", safe_name, self.bucket, key)
         return key
 
     def download_document(self, key: str, local_path: str) -> str:
@@ -61,8 +64,11 @@ class S3Storage:
         Returns:
             Local path of the downloaded file.
         """
-        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
-        self.client.download_file(self.bucket, key, local_path)
+        dest = Path(local_path)
+        if not dest.name or dest.name in (".", ".."):
+            raise ValueError(f"Invalid local download path: {local_path!r}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        self.client.download_file(self.bucket, key, str(dest))
         logger.info("Downloaded s3://%s/%s to %s", self.bucket, key, local_path)
         return local_path
 
@@ -76,20 +82,31 @@ class S3Storage:
             List of document metadata dicts.
         """
         prefix = f"sessions/{session_id}/documents/"
-
-        try:
-            response = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
-        except ClientError:
-            return []
-
         documents = []
-        for obj in response.get("Contents", []):
-            documents.append({
-                "key": obj["Key"],
-                "size": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
-                "filename": obj["Key"].split("/")[-1],
-            })
+        continuation_token = None
+
+        while True:
+            kwargs = {"Bucket": self.bucket, "Prefix": prefix}
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+            try:
+                response = self.client.list_objects_v2(**kwargs)
+            except ClientError:
+                return []
+
+            for obj in response.get("Contents", []):
+                documents.append({
+                    "key": obj["Key"],
+                    "size": obj["Size"],
+                    "last_modified": obj["LastModified"].isoformat(),
+                    "filename": obj["Key"].split("/")[-1],
+                })
+
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+            if not continuation_token:
+                break
 
         return documents
 
@@ -107,10 +124,14 @@ class S3Storage:
             return 0
 
         objects = [{"Key": doc["key"]} for doc in documents]
-        self.client.delete_objects(
-            Bucket=self.bucket,
-            Delete={"Objects": objects},
-        )
+        # AWS S3 delete_objects accepts at most 1,000 keys per request.
+        batch_size = 1000
+        for i in range(0, len(objects), batch_size):
+            batch = objects[i : i + batch_size]
+            self.client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": batch},
+            )
 
         logger.info("Deleted %d documents for session %s", len(objects), session_id)
         return len(objects)

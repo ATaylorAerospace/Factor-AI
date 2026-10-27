@@ -126,7 +126,7 @@ def sample_provisions_by_doc():
 @pytest.fixture
 def temp_dir():
     """Temporary directory for test files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         yield tmpdir
 
 

@@ -24,7 +24,7 @@ class AgentCorePolicy:
             return
 
         for policy_file in self.policies_dir.glob("*.cedar"):
-            content = policy_file.read_text()
+            content = policy_file.read_text(encoding="utf-8")
             self._policies.append({
                 "name": policy_file.stem,
                 "content": content,

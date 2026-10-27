@@ -14,8 +14,25 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _session_dirs(session_id: str) -> tuple[Path, Path]:
-    return Path(f"uploads/{session_id}"), Path(f"reports/{session_id}")
+def safe_session_subdir(base: str | Path, session_id: str) -> Path:
+    """Resolve ``base / session_id`` and verify it stays within ``base``."""
+    if not session_id or session_id in {".", ".."} or "/" in session_id or "\\" in session_id:
+        raise ValueError(f"Invalid session_id: {session_id!r}")
+    base_dir = Path(base).resolve()
+    target = (base_dir / session_id).resolve()
+    if target == base_dir or not target.is_relative_to(base_dir):
+        raise ValueError(f"Session path escapes base directory: {session_id!r}")
+    return Path(base) / session_id
+
+
+def _session_dirs(session_id: str) -> tuple[Path, ...]:
+    try:
+        return (
+            safe_session_subdir("uploads", session_id),
+            safe_session_subdir("reports", session_id),
+        )
+    except ValueError:
+        return ()
 
 
 class SessionStore:
@@ -36,19 +53,25 @@ class SessionStore:
         self.ttl_seconds = ttl_seconds
         self.max_sessions = max_sessions
 
-    def _evict_unlocked(self) -> list[str]:
-        """Drop expired sessions, then the oldest ones, leaving room for one new session."""
+    def _evict_expired_unlocked(self) -> list[str]:
+        """Drop TTL-expired sessions."""
         now = time.monotonic()
         evicted = [sid for sid, t in self._created.items() if now - t > self.ttl_seconds]
-        overflow = len(self._created) - len(evicted) - (self.max_sessions - 1)
-        if overflow > 0:
-            remaining = sorted(
-                (t, sid) for sid, t in self._created.items() if sid not in evicted
-            )
-            evicted.extend(sid for _, sid in remaining[:overflow])
         for sid in evicted:
             self._sessions.pop(sid, None)
             self._created.pop(sid, None)
+        return evicted
+
+    def _evict_unlocked(self) -> list[str]:
+        """Drop expired sessions, then the oldest ones, leaving room for one new session."""
+        evicted = self._evict_expired_unlocked()
+        overflow = len(self._created) - (self.max_sessions - 1)
+        if overflow > 0:
+            remaining = sorted((t, sid) for sid, t in self._created.items())
+            for _, sid in remaining[:overflow]:
+                self._sessions.pop(sid, None)
+                self._created.pop(sid, None)
+                evicted.append(sid)
         return evicted
 
     @staticmethod
@@ -96,8 +119,12 @@ class SessionStore:
             Session dict or None if not found. Callers may modify the copy freely.
         """
         with self._lock:
+            evicted = self._evict_expired_unlocked()
             session = self._sessions.get(session_id)
-            return copy.deepcopy(session) if session is not None else None
+            result = copy.deepcopy(session) if session is not None else None
+        if evicted:
+            self._remove_files(evicted)
+        return result
 
     def update_status(self, session_id: str, status: str, error: str | None = None) -> None:
         """Update session status.
@@ -164,7 +191,8 @@ class SessionStore:
             List of session summaries.
         """
         with self._lock:
-            return [
+            evicted = self._evict_expired_unlocked()
+            summaries = [
                 {
                     "session_id": s["session_id"],
                     "status": s["status"],
@@ -173,3 +201,6 @@ class SessionStore:
                 }
                 for s in self._sessions.values()
             ]
+        if evicted:
+            self._remove_files(evicted)
+        return summaries
