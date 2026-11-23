@@ -24,10 +24,10 @@ class AgentCoreStack(cdk.Stack):
             self, "AgentRole",
             role_name="factor-agent-role",
             assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonBedrockFullAccess"),
-            ],
         )
+        # Least privilege: the role gets only the model-invocation actions
+        # granted below, not the AmazonBedrockFullAccess managed policy (which
+        # also allows creating, modifying, and deleting Bedrock resources).
 
         storage_stack.documents_bucket.grant_read_write(self.agent_role)
         storage_stack.sessions_table.grant_read_write_data(self.agent_role)

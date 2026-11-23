@@ -95,6 +95,26 @@ _COMPILED_PATTERNS: dict[str, list[re.Pattern[str]]] = {
     for ptype, patterns in PROVISION_PATTERNS.items()
 }
 
+# A first line longer than this is body text, not a section heading.
+MAX_HEADING_CHARS = 120
+
+
+def _heading_types(provision_text: str) -> list[str]:
+    """Provision types named in the clause's heading line.
+
+    A combined heading such as "ENTIRE AGREEMENT; SEVERABILITY" covers two
+    provisions; gap analysis needs both even though the clause gets one type.
+    """
+    lines = provision_text.strip().splitlines()
+    heading = lines[0] if lines else ""
+    if len(heading) > MAX_HEADING_CHARS:
+        return []
+    return [
+        ptype
+        for ptype, patterns in _COMPILED_PATTERNS.items()
+        if any(p.search(heading) for p in patterns)
+    ]
+
 
 @tool
 def detect_provision_type(provision_text: str) -> dict:
@@ -106,13 +126,15 @@ def detect_provision_type(provision_text: str) -> dict:
         provision_text: The text of the provision to classify.
 
     Returns:
-        Dictionary with detected type, confidence, and matched patterns.
+        Dictionary with detected type, confidence, matched patterns, and
+        ``heading_types`` (every type named in the clause's heading line).
     """
     if not provision_text.strip():
         return {
             "provision_type": "other",
             "confidence": 0.0,
             "matched_patterns": [],
+            "heading_types": [],
         }
 
     scores: dict[str, int] = {}
@@ -137,6 +159,7 @@ def detect_provision_type(provision_text: str) -> dict:
             "provision_type": "other",
             "confidence": 0.0,
             "matched_patterns": [],
+            "heading_types": [],
         }
 
     best_type = max(scores, key=scores.get)  # type: ignore[arg-type]
@@ -150,4 +173,5 @@ def detect_provision_type(provision_text: str) -> dict:
         "confidence": round(confidence, 3),
         "matched_patterns": matches_detail.get(best_type, []),
         "all_detected": list(scores.keys()),
+        "heading_types": _heading_types(provision_text),
     }

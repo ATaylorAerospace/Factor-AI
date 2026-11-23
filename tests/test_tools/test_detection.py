@@ -82,3 +82,17 @@ def test_matched_patterns_are_full_phrases():
     assert result["provision_type"] == "limitation_of_liability"
     assert all(isinstance(m, str) for m in result["matched_patterns"])
     assert any(m.lower().startswith("in no event shall") for m in result["matched_patterns"])
+
+
+def test_combined_heading_reports_every_named_type():
+    text = (
+        "8. ENTIRE AGREEMENT; SEVERABILITY\n"
+        "This Agreement is the entire agreement. If any provision is invalid the rest is severable."
+    )
+    result = detect_provision_type(provision_text=text)
+    assert set(result["heading_types"]) == {"entire_agreement", "severability"}
+
+
+def test_long_first_line_is_not_treated_as_heading():
+    text = "The parties agree that termination, notice and waiver are addressed elsewhere. " * 3
+    assert detect_provision_type(provision_text=text)["heading_types"] == []

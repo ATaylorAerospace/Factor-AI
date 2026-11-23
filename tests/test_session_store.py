@@ -63,3 +63,20 @@ def test_get_session_returns_a_copy():
     copy = store.get_session("s1")
     copy["result"]["title"] = "changed"
     assert store.get_session("s1")["result"]["title"] == "Report"
+
+
+def test_get_session_copy_is_isolated_from_store():
+    store = SessionStore()
+    store.create_session("s1", ["a.txt"])
+    store.store_result("s1", {"sections": [{"items": [1]}]})
+    store.add_trace("s1", {"step": 1})
+
+    copy_ = store.get_session("s1")
+    copy_["result"]["sections"][0]["items"].append(2)
+    copy_["trace"].append({"step": 99})
+    copy_["status"] = "tampered"
+
+    fresh = store.get_session("s1")
+    assert fresh["result"] == {"sections": [{"items": [1]}]}
+    assert fresh["trace"] == [{"step": 1}]
+    assert fresh["status"] == "completed"

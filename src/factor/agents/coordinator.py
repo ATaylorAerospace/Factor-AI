@@ -121,6 +121,7 @@ def analyze_provisions(documents: dict) -> dict:
             prov["provision_type"] = detection["provision_type"]
             prov["detection_confidence"] = detection["confidence"]
             detected_types.append(detection["provision_type"])
+            detected_types.extend(detection.get("heading_types", []))
 
             risk = score_risk(provision=prov)
             risk.update({

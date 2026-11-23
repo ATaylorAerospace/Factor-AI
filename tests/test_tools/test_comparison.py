@@ -100,3 +100,57 @@ def test_compare_cap_detection_uses_whole_words():
     })
     indem = result["comparisons"][0]
     assert not any("cap inconsistency" in i for i in indem["inconsistencies"])
+
+
+def _compare(ptype, a, b):
+    result = compare_across_documents(provisions_by_doc={
+        "a": [{"provision_type": ptype, "text": a}],
+        "b": [{"provision_type": ptype, "text": b}],
+    })
+    return " | ".join(result["comparisons"][0]["inconsistencies"])
+
+
+def test_unlimited_liability_under_limitation_heading_is_uncapped():
+    findings = _compare(
+        "limitation_of_liability",
+        "LIMITATION OF LIABILITY. Liability under this agreement is unlimited.",
+        "Liability is capped at the fees paid.",
+    )
+    assert "Liability cap inconsistency" in findings
+
+
+def test_cap_with_carve_out_still_counts_as_capped():
+    findings = _compare(
+        "limitation_of_liability",
+        "Aggregate liability shall not exceed $1M, but is not limited for fraud.",
+        "Liability is capped at the fees paid.",
+    )
+    assert "Liability cap inconsistency" not in findings
+
+
+def test_jurisdictions_beyond_the_original_twelve_are_compared():
+    findings = _compare("governing_law", "governed by the laws of Ohio", "governed by the laws of Nevada")
+    assert "nevada" in findings and "ohio" in findings
+
+
+def test_west_virginia_differs_from_virginia_and_kansas_from_arkansas():
+    assert "governing law jurisdictions" in _compare(
+        "governing_law", "laws of West Virginia", "laws of Virginia"
+    )
+    assert "governing law jurisdictions" in _compare(
+        "governing_law", "laws of Arkansas", "laws of Kansas"
+    )
+
+
+def test_identical_law_and_venue_pairs_are_consistent():
+    clause = "governed by the laws of Delaware; venue lies in New York"
+    assert "governing law jurisdictions" not in _compare("governing_law", clause, clause)
+
+
+def test_explicit_no_cure_period_is_not_a_cure_period():
+    findings = _compare(
+        "termination",
+        "Termination is effective at once with no cure period.",
+        "The breaching party has a 30 day cure period.",
+    )
+    assert "Cure period inconsistency" in findings

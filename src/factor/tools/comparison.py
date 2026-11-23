@@ -11,12 +11,53 @@ from strands import tool
 logger = logging.getLogger(__name__)
 
 JURISDICTIONS = [
-    "new york", "delaware", "california", "texas", "illinois",
-    "florida", "massachusetts", "washington", "virginia",
-    "england", "singapore", "hong kong",
+    # US states and DC
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "district of columbia", "florida", "georgia",
+    "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky",
+    "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota",
+    "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire",
+    "new jersey", "new mexico", "new york", "north carolina", "north dakota",
+    "ohio", "oklahoma", "oregon", "pennsylvania", "rhode island",
+    "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
+    "virginia", "washington", "west virginia", "wisconsin", "wyoming",
+    # Common non-US choices of law
+    "england", "wales", "scotland", "ireland", "ontario", "quebec",
+    "british columbia", "singapore", "hong kong", "germany", "france",
+    "switzerland", "netherlands", "japan", "australia", "india",
 ]
-CAP_PATTERN = re.compile(r"\b(?:cap|caps|capped|limit|limited|limitation|aggregate|maximum)\b", re.IGNORECASE)
+# Longest names first so "west virginia" is not read as "virginia"; word
+# boundaries so "kansas" is not found inside "arkansas".
+JURISDICTION_PATTERN = re.compile(
+    r"\b(?:" + "|".join(re.escape(j) for j in sorted(JURISDICTIONS, key=len, reverse=True)) + r")\b"
+)
+
+# An explicit cap. "limit"/"limited"/"limitation" are weaker evidence: they
+# appear in the heading "LIMITATION OF LIABILITY" even when the clause goes on
+# to say liability is unlimited.
+STRONG_CAP_PATTERN = re.compile(
+    r"\b(?:cap|caps|capped|aggregate|maximum|(?:shall|will|may) not exceed)\b", re.IGNORECASE
+)
+WEAK_CAP_PATTERN = re.compile(r"\b(?:limit|limits|limited|limitation)\b", re.IGNORECASE)
+UNCAPPED_PATTERN = re.compile(
+    r"\b(?:unlimited|uncapped|no cap|no limit|without limit(?:ation)?|not (?:be )?limited)\b",
+    re.IGNORECASE,
+)
 CURE_PATTERN = re.compile(r"\b(?:cure|cured|remedy period)\b", re.IGNORECASE)
+NO_CURE_PATTERN = re.compile(
+    r"\b(?:no|without(?: any)?)\s+(?:cure|remedy) period\b|\bno (?:right|opportunity) to cure\b",
+    re.IGNORECASE,
+)
+
+
+def _has_liability_cap(text: str) -> bool:
+    if STRONG_CAP_PATTERN.search(text):
+        return True
+    return bool(WEAK_CAP_PATTERN.search(text)) and not UNCAPPED_PATTERN.search(text)
+
+
+def _has_cure_period(text: str) -> bool:
+    return bool(CURE_PATTERN.search(text)) and not NO_CURE_PATTERN.search(text)
 
 
 @tool
@@ -65,17 +106,20 @@ def compare_across_documents(
 
         if ptype == "governing_law":
             per_doc = {
-                doc_id: {j for j in JURISDICTIONS if j in text}
+                doc_id: frozenset(JURISDICTION_PATTERN.findall(text))
                 for doc_id, text in doc_text.items()
             }
-            jurisdictions = set().union(*per_doc.values())
-            if len(jurisdictions) > 1:
+            # Compare document to document: two contracts that both name
+            # Delaware law and New York courts agree with each other.
+            named = {j for j in per_doc.values() if j}
+            jurisdictions = set().union(*named) if named else set()
+            if len(named) > 1:
                 inconsistencies.append(
                     f"Multiple governing law jurisdictions detected: {', '.join(sorted(jurisdictions))}"
                 )
 
         if ptype in ("indemnification", "limitation_of_liability"):
-            has_cap = [d for d in doc_ids if CAP_PATTERN.search(doc_text[d])]
+            has_cap = [d for d in doc_ids if _has_liability_cap(doc_text[d])]
             no_cap = [d for d in doc_ids if d not in has_cap]
             if has_cap and no_cap:
                 inconsistencies.append(
@@ -84,7 +128,7 @@ def compare_across_documents(
                 )
 
         if ptype == "termination":
-            cure = [d for d in doc_ids if CURE_PATTERN.search(doc_text[d])]
+            cure = [d for d in doc_ids if _has_cure_period(doc_text[d])]
             no_cure = [d for d in doc_ids if d not in cure]
             if cure and no_cure:
                 inconsistencies.append(
