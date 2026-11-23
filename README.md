@@ -241,7 +241,7 @@ pip install -e ".[dev]"
 python scripts/seed_knowledge_base.py
 
 # Start the API server
-uvicorn src.factor.app:app --reload --port 8000
+uvicorn factor.app:app --app-dir src --reload --port 8000
 ```
 
 ### Frontend

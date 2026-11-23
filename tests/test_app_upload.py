@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
-import fitz
+import pymupdf
 from fastapi.testclient import TestClient
 
 from factor.app import app
@@ -118,7 +119,7 @@ def test_legacy_doc_upload_is_rejected(tmp_path, monkeypatch):
 
 def test_unreadable_files_are_skipped_and_batch_continues(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    blank = fitz.open()
+    blank = pymupdf.open()
     blank.new_page()
     client = TestClient(app)
     _, events = _analyze(client, [
@@ -137,7 +138,7 @@ def test_unreadable_files_are_skipped_and_batch_continues(tmp_path, monkeypatch)
 
 def test_all_files_unreadable_gives_unknown_risk(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    blank = fitz.open()
+    blank = pymupdf.open()
     blank.new_page()
     client = TestClient(app)
     _, events = _analyze(client, [("scanned.pdf", blank.tobytes(), "application/pdf")])
@@ -212,3 +213,58 @@ def test_export_is_written_atomically(tmp_path, monkeypatch):
     assert len(bodies) == 6
     assert all(b.endswith(b"</html>") for b in bodies)
     assert not list((tmp_path / "reports" / "sess-atomic").glob(".*.tmp"))
+
+
+def test_combined_heading_does_not_produce_false_gaps(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    text = (
+        "1. ENTIRE AGREEMENT; SEVERABILITY\n"
+        "This Agreement is the entire agreement between the parties. If any provision is held "
+        "invalid, the remainder is severable and stays in force.\n"
+    )
+    client = TestClient(app)
+    response = client.post("/api/v1/analyze", files={"files": ("deal.txt", text.encode(), "text/plain")})
+    assert response.status_code == 200
+    report = next(
+        json.loads(block.split("data: ", 1)[1])
+        for block in response.text.replace("\r\n", "\n").split("\n\n")
+        if block.startswith("event: report")
+    )
+    gaps = next(s for s in report["sections"] if s["title"] == "Gap Analysis")["items"]
+    missing = {g["missing_provision"] for g in gaps}
+    assert "entire_agreement" not in missing
+    assert "severability" not in missing
+
+
+def test_client_disconnect_marks_session_cancelled(tmp_path, monkeypatch):
+    import asyncio
+
+    from factor import app as app_module
+
+    monkeypatch.chdir(tmp_path)
+
+    async def scenario():
+        upload = MagicMock()
+        upload.filename = "a.txt"
+        upload.size = 5
+        chunks = [b"hello", b""]
+
+        async def read(_n):
+            return chunks.pop(0)
+
+        upload.read = read
+        response = await app_module.analyze_documents(files=[upload])
+        stream = response.body_iterator
+        first = await stream.__anext__()
+        session_id = json.loads(first["data"])["session_id"]
+        # Simulate the server cancelling the generator when the client goes away.
+        try:
+            await stream.athrow(asyncio.CancelledError())
+        except (asyncio.CancelledError, StopAsyncIteration):
+            pass
+        return session_id
+
+    session_id = asyncio.run(scenario())
+    session = app_module.session_store.get_session(session_id)
+    assert session["status"] == "cancelled"
+    assert not (tmp_path / "uploads" / session_id).exists()

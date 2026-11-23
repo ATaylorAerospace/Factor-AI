@@ -140,7 +140,7 @@ def find_gaps(
     if checklist:
         required = checklist.get("required", [])
     else:
-        dt = doc_type.lower().replace(" ", "_")
+        dt = doc_type.strip().lower().replace(" ", "_")
         required = STANDARD_CHECKLISTS.get(dt, STANDARD_CHECKLISTS["unknown"])
 
     detected_set = {p.lower().replace(" ", "_") for p in detected_provisions}

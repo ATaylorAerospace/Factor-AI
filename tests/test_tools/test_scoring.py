@@ -60,3 +60,17 @@ def test_score_risk_has_explanation():
     result = score_risk(provision=provision)
     assert result["explanation"]
     assert "indemnification" in result["explanation"]
+
+
+def test_mitigating_signal_inside_high_risk_phrase_not_counted():
+    """'no cure period' must not also earn the 'cure period' mitigation."""
+    result = score_risk(provision={"provision_type": "termination", "text": "There is no cure period."})
+    assert result["factors"] == ["High-risk signal: no cure period"]
+
+
+def test_signal_does_not_match_inside_longer_word():
+    uncapped = score_risk(provision={"provision_type": "indemnification", "text": "Liability is uncapped."})
+    assert "Mitigating factor: capped" not in uncapped["factors"]
+    # ...but suffixes still match: "immediately" contains the signal "immediate".
+    immediate = score_risk(provision={"provision_type": "termination", "text": "May terminate immediately."})
+    assert "High-risk signal: immediate" in immediate["factors"]

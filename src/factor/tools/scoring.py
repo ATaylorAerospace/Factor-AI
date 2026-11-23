@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from functools import lru_cache
 
 from strands import tool
 
@@ -52,6 +54,17 @@ DEFAULT_RUBRIC: dict[str, dict] = {
 }
 
 
+@lru_cache(maxsize=512)
+def _signal_pattern(signal: str) -> re.Pattern[str]:
+    """Match a signal phrase at a word start, allowing suffixes.
+
+    The leading boundary keeps "capped" from matching inside "uncapped" (and
+    "reasonable" inside "unreasonable"); leaving the end open still lets
+    "immediate" match "immediately".
+    """
+    return re.compile(r"(?<![a-z0-9])" + re.escape(signal.lower()))
+
+
 def _calculate_score(provision_text: str, rubric_entry: dict) -> tuple[float, list[str]]:
     """Calculate risk score based on signal matching."""
     text_lower = provision_text.lower()
@@ -59,12 +72,16 @@ def _calculate_score(provision_text: str, rubric_entry: dict) -> tuple[float, li
     risk_points = 0.0
 
     for signal in rubric_entry.get("high_risk_signals", []):
-        if signal.lower() in text_lower:
+        pattern = _signal_pattern(signal)
+        if pattern.search(text_lower):
             risk_points += 2.5
             factors.append(f"High-risk signal: {signal}")
+            # Blank out the matched text so a mitigating signal contained in it
+            # ("cure period" inside "no cure period") is not counted as well.
+            text_lower = pattern.sub(lambda m: " " * len(m.group(0)), text_lower)
 
     for signal in rubric_entry.get("low_risk_signals", []):
-        if signal.lower() in text_lower:
+        if _signal_pattern(signal).search(text_lower):
             risk_points -= 1.0
             factors.append(f"Mitigating factor: {signal}")
 

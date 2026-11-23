@@ -141,6 +141,7 @@ def _analyze_document(doc: dict) -> tuple[list[dict], list[dict]]:
         prov["provision_type"] = detection["provision_type"]
         prov["detection_confidence"] = detection["confidence"]
         detected_types.append(detection["provision_type"])
+        detected_types.extend(detection.get("heading_types", []))
 
         risk = score_risk(provision=prov)
         risk.update({
@@ -348,6 +349,13 @@ async def analyze_documents(files: list[UploadFile] = File(...)):
                 "message": str(exc),
                 "disclaimer": DISCLAIMER,
             })
+
+        except asyncio.CancelledError:
+            # The client disconnected mid-stream. Without this the session
+            # stayed "processing" until it expired.
+            logger.info("Client disconnected; analysis cancelled for session %s", session_id)
+            session_store.update_status(session_id, "cancelled", error="Client disconnected")
+            raise
 
         except Exception as exc:  # report any failure to the client
             logger.exception("Analysis failed for session %s", session_id)

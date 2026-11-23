@@ -121,10 +121,17 @@ class SessionStore:
         with self._lock:
             evicted = self._evict_expired_unlocked()
             session = self._sessions.get(session_id)
-            result = copy.deepcopy(session) if session is not None else None
+            # Snapshot only the containers this store mutates in place. The
+            # stored result is replaced, never edited, so the expensive deep
+            # copy of a large report can run after the lock is released
+            # instead of stalling every other request.
+            snapshot = None
+            if session is not None:
+                snapshot = dict(session)
+                snapshot["trace"] = list(session["trace"])
         if evicted:
             self._remove_files(evicted)
-        return result
+        return copy.deepcopy(snapshot) if snapshot is not None else None
 
     def update_status(self, session_id: str, status: str, error: str | None = None) -> None:
         """Update session status.
